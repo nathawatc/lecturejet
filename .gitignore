@@ -18,6 +18,10 @@ coverage.*
 *.coverprofile
 profile.cov
 
+# Local LectureJet build and synthetic media
+/build/
+/testdata/*.mp4
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
@@ -31,4 +35,3 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
-
