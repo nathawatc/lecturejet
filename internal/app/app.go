@@ -6,14 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"codeberg.org/nathawat/lecturejet/internal/analyze"
 	"codeberg.org/nathawat/lecturejet/internal/config"
 	"codeberg.org/nathawat/lecturejet/internal/media"
 	"codeberg.org/nathawat/lecturejet/internal/timeline"
-	"codeberg.org/nathawat/lecturejet/internal/ui"
 )
 
 type Result struct {
@@ -24,37 +22,6 @@ type Result struct {
 	Cuts        int
 	Reduction   float64
 	VAAPIDevice string
-}
-
-func ProbeVAAPIChoices(info media.ProbeInfo, preferred config.VideoCodec, requestedDevice string) []ui.VAAPIChoice {
-	devices := []string{}
-	if requestedDevice != "" {
-		devices = append(devices, requestedDevice)
-	} else {
-		matches, _ := filepath.Glob("/dev/dri/renderD*")
-		sort.Strings(matches)
-		devices = matches
-	}
-	codecs := []config.VideoCodec{preferred}
-	if preferred == config.VideoHEVC {
-		codecs = append(codecs, config.VideoH264)
-	} else {
-		codecs = append(codecs, config.VideoHEVC)
-	}
-	choices := make([]ui.VAAPIChoice, 0, len(codecs))
-	for _, codec := range codecs {
-		encoder := "h264_vaapi"
-		if codec == config.VideoHEVC {
-			encoder = "hevc_vaapi"
-		}
-		for _, device := range devices {
-			if err := media.ProbeVAAPI(device, encoder, info.VideoWidth, info.VideoHeight); err == nil {
-				choices = append(choices, ui.VAAPIChoice{Codec: codec, Device: device})
-				break
-			}
-		}
-	}
-	return choices
 }
 
 func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, error) {
@@ -209,10 +176,7 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	}
 	defer os.Remove(temporaryPath)
 	wantHVC1 := cfg.VideoCodec == config.VideoHEVC && cfg.HEVCCodecTag == config.HEVCCodecTagHVC1
-	codec := "h264_vaapi"
-	if cfg.VideoCodec == config.VideoHEVC {
-		codec = "hevc_vaapi"
-	}
+	codec := media.VAAPIEncoderName(cfg.VideoCodec)
 	videoTag := ""
 	if cfg.VideoCodec == config.VideoHEVC {
 		videoTag = string(config.HEVCCodecTagHEV1)

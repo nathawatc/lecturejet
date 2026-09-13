@@ -10,11 +10,6 @@ import (
 	"codeberg.org/nathawat/lecturejet/internal/config"
 )
 
-type VAAPIChoice struct {
-	Codec  config.VideoCodec
-	Device string
-}
-
 func Configure(in io.Reader, out io.Writer, cfg config.Config, choices []VAAPIChoice) (config.Config, error) {
 	reader := bufio.NewReader(in)
 	if len(choices) > 0 {

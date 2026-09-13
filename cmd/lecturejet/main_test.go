@@ -257,7 +257,7 @@ func TestSelectVAAPIRegressionSingleDashExplicitCodecDoesNotFallback(t *testing.
 	choices := []ui.VAAPIChoice{
 		{Codec: config.VideoH264, Device: "/dev/dri/renderD128"},
 	}
-	_, err = selectVAAPIConfig(cfg, choices, explicit, false, 1920, 1080)
+	_, err = ui.SelectVAAPI(cfg, choices, explicit, false, 1920, 1080)
 	if err == nil {
 		t.Fatal("expected error preventing fallback when explicit HEVC is unavailable")
 	}
@@ -276,7 +276,7 @@ func TestSelectVAAPIRegressionSingleDashExplicitCodecDoesNotFallback(t *testing.
 	if explicitImplicit {
 		t.Fatalf("expected no codec flag to have explicit=false")
 	}
-	resolved, err := selectVAAPIConfig(cfgImplicit, choices, explicitImplicit, false, 1920, 1080)
+	resolved, err := ui.SelectVAAPI(cfgImplicit, choices, explicitImplicit, false, 1920, 1080)
 	if err != nil {
 		t.Fatalf("expected implicit codec to fall back to H.264: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 			{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"},
 			{Codec: config.VideoH264, Device: "/dev/dri/renderD128"},
 		}
-		resolved, err := selectVAAPIConfig(cfg, choices, false, false, 1920, 1080)
+		resolved, err := ui.SelectVAAPI(cfg, choices, false, false, 1920, 1080)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -344,7 +344,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 		choices := []ui.VAAPIChoice{
 			{Codec: config.VideoH264, Device: "/dev/dri/renderD128"},
 		}
-		resolved, err := selectVAAPIConfig(cfg, choices, false, true, 1920, 1080)
+		resolved, err := ui.SelectVAAPI(cfg, choices, false, true, 1920, 1080)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -360,7 +360,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 			{Codec: config.VideoH264, Device: "/dev/dri/renderD128"},
 			{Codec: config.VideoHEVC, Device: "/dev/dri/renderD129"},
 		}
-		resolved, err := selectVAAPIConfig(cfg, choices, true, false, 1920, 1080)
+		resolved, err := ui.SelectVAAPI(cfg, choices, true, false, 1920, 1080)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -377,7 +377,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 			{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"},
 			{Codec: config.VideoH264, Device: "/dev/dri/renderD128"},
 		}
-		resolved, err := selectVAAPIConfig(cfg, choices, true, true, 1920, 1080)
+		resolved, err := ui.SelectVAAPI(cfg, choices, true, true, 1920, 1080)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -393,7 +393,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 		choices := []ui.VAAPIChoice{
 			{Codec: config.VideoH264, Device: "/dev/dri/renderD128"},
 		}
-		_, err := selectVAAPIConfig(cfg, choices, true, true, 1920, 1080)
+		_, err := ui.SelectVAAPI(cfg, choices, true, true, 1920, 1080)
 		if err == nil {
 			t.Fatal("expected error when explicit HEVC is unavailable")
 		}
@@ -406,7 +406,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 		cfg := config.Default()
 		cfg.VAAPIDevice = "/dev/dri/renderD128"
 		choices := []ui.VAAPIChoice{}
-		_, err := selectVAAPIConfig(cfg, choices, false, true, 1920, 1080)
+		_, err := ui.SelectVAAPI(cfg, choices, false, true, 1920, 1080)
 		if err == nil {
 			t.Fatal("expected error when no usable choices are available")
 		}
@@ -420,7 +420,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 		choices := []ui.VAAPIChoice{
 			{Codec: config.VideoH264, Device: "/dev/dri/renderD128"},
 		}
-		resolved, err := selectVAAPIConfig(cfg, choices, false, false, 1920, 1080)
+		resolved, err := ui.SelectVAAPI(cfg, choices, false, false, 1920, 1080)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -432,7 +432,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 	t.Run("case 8: implicit device + implicit codec errors without claiming device was selected", func(t *testing.T) {
 		cfg := config.Default()
 		choices := []ui.VAAPIChoice{}
-		_, err := selectVAAPIConfig(cfg, choices, false, false, 1920, 1080)
+		_, err := ui.SelectVAAPI(cfg, choices, false, false, 1920, 1080)
 		if err == nil {
 			t.Fatal("expected error when no usable choices are available")
 		}
@@ -450,7 +450,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 		choices := []ui.VAAPIChoice{
 			{Codec: config.VideoHEVC, Device: "/dev/dri/renderD129"},
 		}
-		_, err := selectVAAPIConfig(cfg, choices, false, true, 1920, 1080)
+		_, err := ui.SelectVAAPI(cfg, choices, false, true, 1920, 1080)
 		if err == nil {
 			t.Fatal("expected error when requested device is not among choices")
 		}
@@ -465,7 +465,7 @@ func TestSelectVAAPIConfig(t *testing.T) {
 		choices := []ui.VAAPIChoice{
 			{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"},
 		}
-		_, err := selectVAAPIConfig(cfg, choices, true, false, 1920, 1080)
+		_, err := ui.SelectVAAPI(cfg, choices, true, false, 1920, 1080)
 		if err == nil {
 			t.Fatal("expected error when explicit H264 is unavailable")
 		}
@@ -490,7 +490,7 @@ func TestSelectVAAPIRegressionDevicePopulatedFallback(t *testing.T) {
 		{Codec: config.VideoH264, Device: "/dev/dri/renderD128"},
 	}
 
-	resolved, err := selectVAAPIConfig(cfg, choices, codecExplicit, deviceExplicit, 1920, 1080)
+	resolved, err := ui.SelectVAAPI(cfg, choices, codecExplicit, deviceExplicit, 1920, 1080)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

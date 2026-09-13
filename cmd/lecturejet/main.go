@@ -212,32 +212,20 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("probe %s: %w", cfg.Input, err)
 	}
-	choices := app.ProbeVAAPIChoices(info, cfg.VideoCodec, cfg.VAAPIDevice)
+	choices := ui.ProbeVAAPIChoices(info, cfg.VideoCodec, cfg.VAAPIDevice)
 	if interactive {
 		if codecExplicit {
-			selectedChoices := choices[:0]
-			for _, choice := range choices {
-				if choice.Codec == cfg.VideoCodec {
-					selectedChoices = append(selectedChoices, choice)
-				}
-			}
-			choices = selectedChoices
+			choices = ui.FilterChoices(choices, cfg.VideoCodec)
 		}
-		if len(choices) == 0 {
-			if codecExplicit {
-				return fmt.Errorf("selected %s VAAPI encoder is unavailable for this input/device", cfg.VideoCodec)
-			}
-			if deviceExplicit {
-				return fmt.Errorf("no usable VAAPI encoder for %dx%d on selected device", info.VideoWidth, info.VideoHeight)
-			}
-			return fmt.Errorf("no usable VAAPI encoder for %dx%d", info.VideoWidth, info.VideoHeight)
+		if err := ui.CheckAvailable(choices, cfg.VideoCodec, info.VideoWidth, info.VideoHeight, codecExplicit, deviceExplicit); err != nil {
+			return err
 		}
 		cfg, err = ui.Configure(stdin, stderr, cfg, choices)
 		if err != nil {
 			return err
 		}
 	} else {
-		cfg, err = selectVAAPIConfig(cfg, choices, codecExplicit, deviceExplicit, info.VideoWidth, info.VideoHeight)
+		cfg, err = ui.SelectVAAPI(cfg, choices, codecExplicit, deviceExplicit, info.VideoWidth, info.VideoHeight)
 		if err != nil {
 			return err
 		}
@@ -259,46 +247,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 	return nil
-}
-
-func selectVAAPIConfig(
-	cfg config.Config,
-	choices []ui.VAAPIChoice,
-	codecExplicit bool,
-	deviceExplicit bool,
-	width int,
-	height int,
-) (config.Config, error) {
-	var selected ui.VAAPIChoice
-	found := false
-	for _, choice := range choices {
-		if deviceExplicit && choice.Device != cfg.VAAPIDevice {
-			continue
-		}
-		if codecExplicit && choice.Codec != cfg.VideoCodec {
-			continue
-		}
-		selected = choice
-		found = true
-		break
-	}
-	if !found {
-		if codecExplicit {
-			return config.Config{}, fmt.Errorf("selected %s VAAPI encoder is unavailable for this input/device", cfg.VideoCodec)
-		}
-		if deviceExplicit {
-			return config.Config{}, fmt.Errorf("no usable VAAPI encoder for %dx%d on selected device", width, height)
-		}
-		return config.Config{}, fmt.Errorf("no usable VAAPI encoder for %dx%d", width, height)
-	}
-
-	if !codecExplicit {
-		cfg.VideoCodec = selected.Codec
-	}
-	if !deviceExplicit {
-		cfg.VAAPIDevice = selected.Device
-	}
-	return cfg, nil
 }
 
 func runAnalyze(args []string, stdout, stderr io.Writer) error {
