@@ -194,6 +194,33 @@ int lj_probe_file(const char *path, LJProbeInfo *info, char *error, size_t error
     return 0;
 }
 
+static int lj_alloc_vaapi_frames(AVBufferRef *device_ref, enum AVPixelFormat sw_format,
+                                 int width, int height, int pool_size,
+                                 AVBufferRef **frames_ref_out)
+{
+    if (!frames_ref_out)
+        return AVERROR(EINVAL);
+    *frames_ref_out = NULL;
+    if (!device_ref || width <= 0 || height <= 0)
+        return AVERROR(EINVAL);
+    AVBufferRef *frames_ref = av_hwframe_ctx_alloc(device_ref);
+    if (!frames_ref)
+        return AVERROR(ENOMEM);
+    AVHWFramesContext *frames = (AVHWFramesContext *)frames_ref->data;
+    frames->format = AV_PIX_FMT_VAAPI;
+    frames->sw_format = sw_format;
+    frames->width = width;
+    frames->height = height;
+    frames->initial_pool_size = pool_size;
+    int ret = av_hwframe_ctx_init(frames_ref);
+    if (ret < 0) {
+        av_buffer_unref(&frames_ref);
+        return ret;
+    }
+    *frames_ref_out = frames_ref;
+    return 0;
+}
+
 int lj_probe_vaapi(const char *device, const char *codec, int width, int height,
                    char *error, size_t error_size)
 {
@@ -224,28 +251,18 @@ int lj_probe_vaapi(const char *device, const char *codec, int width, int height,
     context->pix_fmt = AV_PIX_FMT_VAAPI;
     context->hw_device_ctx = av_buffer_ref(device_ref);
     AVBufferRef *frames_ref = NULL;
-    if (!context->hw_device_ctx)
+    if (!context->hw_device_ctx) {
         ret = AVERROR(ENOMEM);
-    else
+    } else {
         ret = lj_set_video_quality(context, error, error_size);
-    if (ret >= 0)
-        frames_ref = av_hwframe_ctx_alloc(device_ref);
-    if (ret >= 0 && !frames_ref) {
-        ret = AVERROR(ENOMEM);
     }
+    if (ret >= 0)
+        ret = lj_alloc_vaapi_frames(device_ref, AV_PIX_FMT_NV12, width, height, 4, &frames_ref);
     if (ret >= 0) {
-        AVHWFramesContext *frames = (AVHWFramesContext *)frames_ref->data;
-        frames->format = AV_PIX_FMT_VAAPI;
-        frames->sw_format = AV_PIX_FMT_NV12;
-        frames->width = width;
-        frames->height = height;
-        frames->initial_pool_size = 4;
-        ret = av_hwframe_ctx_init(frames_ref);
-        if (ret >= 0)
-            context->hw_frames_ctx = av_buffer_ref(frames_ref);
-        if (ret >= 0 && !context->hw_frames_ctx)
+        context->hw_frames_ctx = av_buffer_ref(frames_ref);
+        if (!context->hw_frames_ctx)
             ret = AVERROR(ENOMEM);
-        if (ret >= 0)
+        else
             ret = avcodec_open2(context, encoder, NULL);
     }
     if (ret < 0 && (!error || error[0] == '\0'))
@@ -792,7 +809,6 @@ typedef struct LJTimelineView {
     int64_t *sample_start;
     int64_t *sample_end;
     int64_t source_end;
-    int64_t output_end;
     size_t cursor;
 } LJTimelineView;
 
@@ -831,7 +847,6 @@ static int lj_timeline_init(LJTimelineView *view, const LJSegment *segments, siz
             output += segment->end_ns - segment->start_ns;
     }
     view->source_end = position;
-    view->output_end = output;
     return 0;
 }
 
@@ -1164,16 +1179,8 @@ static int lj_open_video_encoder(LJRenderState *state, const LJRenderOptions *op
         return ret;
     if (state->output->oformat->flags & AVFMT_GLOBALHEADER)
         state->video_encoder->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-    state->hw_frames = av_hwframe_ctx_alloc(state->vaapi_device);
-    if (!state->hw_frames)
-        return AVERROR(ENOMEM);
-    AVHWFramesContext *frames = (AVHWFramesContext *)state->hw_frames->data;
-    frames->format = AV_PIX_FMT_VAAPI;
-    frames->sw_format = AV_PIX_FMT_NV12;
-    frames->width = width;
-    frames->height = height;
-    frames->initial_pool_size = 16;
-    ret = av_hwframe_ctx_init(state->hw_frames);
+    ret = lj_alloc_vaapi_frames(state->vaapi_device, AV_PIX_FMT_NV12, width, height, 16,
+                                &state->hw_frames);
     if (ret < 0)
         return ret;
     av_buffer_unref(&state->video_encoder->hw_frames_ctx);
@@ -1549,46 +1556,38 @@ int lj_render_file(const char *input, const char *output,
         goto done;
     }
     lj_set_interrupt_callback(state.output, state.cancel);
-    // Open and add streams before the header. Video encoder also validates VAAPI.
-    LJProbeInfo probe;
-    ret = lj_probe_file(input, &probe, state.error, sizeof(state.error));
+    // Open input to inspect streams and configure encoders before writing header.
+    AVFormatContext *input_format = avformat_alloc_context();
+    if (!input_format) {
+        ret = AVERROR(ENOMEM);
+        goto done;
+    }
+    lj_set_interrupt_callback(input_format, state.cancel);
+    ret = avformat_open_input(&input_format, input, NULL, NULL);
     if (ret < 0)
         goto done;
-    if (probe.video_stream < 0) {
+    ret = avformat_find_stream_info(input_format, NULL);
+    if (ret < 0) {
+        avformat_close_input(&input_format);
+        goto done;
+    }
+    int video_index = av_find_best_stream(input_format, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+    if (video_index < 0) {
+        avformat_close_input(&input_format);
         lj_error(state.error, sizeof(state.error), "rendering: input has no video stream");
         ret = AVERROR_STREAM_NOT_FOUND;
         goto done;
     }
-    AVFormatContext *video_format = NULL;
-    video_format = avformat_alloc_context();
-    if (!video_format) {
-        ret = AVERROR(ENOMEM);
-        goto done;
-    }
-    lj_set_interrupt_callback(video_format, state.cancel);
-    ret = avformat_open_input(&video_format, input, NULL, NULL);
+    int has_audio = av_find_best_stream(input_format, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0) >= 0;
+    int vid_w = input_format->streams[video_index]->codecpar->width;
+    int vid_h = input_format->streams[video_index]->codecpar->height;
+    AVRational vid_fps = av_guess_frame_rate(input_format, input_format->streams[video_index], NULL);
+    avformat_close_input(&input_format);
+
+    ret = lj_open_video_encoder(&state, options, vid_w, vid_h, vid_fps);
     if (ret < 0)
         goto done;
-    ret = avformat_find_stream_info(video_format, NULL);
-    if (ret < 0) {
-        avformat_close_input(&video_format);
-        goto done;
-    }
-    const AVCodec *video_decoder = NULL;
-    int video_index = av_find_best_stream(video_format, AVMEDIA_TYPE_VIDEO, -1, -1,
-                                          &video_decoder, 0);
-    if (video_index < 0) {
-        avformat_close_input(&video_format);
-        ret = AVERROR_STREAM_NOT_FOUND;
-        goto done;
-    }
-    ret = lj_open_video_encoder(&state, options, video_format->streams[video_index]->codecpar->width,
-                                video_format->streams[video_index]->codecpar->height,
-                                av_guess_frame_rate(video_format, video_format->streams[video_index], NULL));
-    avformat_close_input(&video_format);
-    if (ret < 0)
-        goto done;
-    if (probe.audio_stream >= 0) {
+    if (has_audio) {
         ret = lj_open_audio_encoder(&state, options->output_mono ? 1 : 2);
         if (ret < 0)
             goto done;
@@ -1605,7 +1604,7 @@ int lj_render_file(const char *input, const char *output,
     ret = avformat_write_header(state.output, NULL);
     if (ret < 0)
         goto done;
-    if (probe.audio_stream >= 0) {
+    if (has_audio) {
         ret = lj_render_audio(&state, input, options, &timeline, progress, &last_progress);
         if (ret < 0)
             goto done;
