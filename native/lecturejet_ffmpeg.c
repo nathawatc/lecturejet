@@ -347,21 +347,22 @@ static int lj_audio_filter_drain(LJAudioDecoder *decoder)
         return 1;
     AVFrame *filtered = av_frame_alloc();
     if (!filtered)
-        return -AVERROR(ENOMEM);
+        return AVERROR(ENOMEM);
+    int result = 0;
     int ret = av_buffersink_get_samples(decoder->filter_sink, filtered, 480);
     if (ret == AVERROR(EAGAIN)) {
-        av_frame_free(&filtered);
-        return 1;
+        result = 1;
+        goto cleanup;
     }
     if (ret == AVERROR_EOF) {
         decoder->filter_eof = 1;
-        av_frame_free(&filtered);
-        return 1;
+        result = 1;
+        goto cleanup;
     }
     if (ret < 0) {
         lj_fferror(decoder->error, sizeof(decoder->error), "reading RNNoise output", ret);
-        av_frame_free(&filtered);
-        return -1;
+        result = ret;
+        goto cleanup;
     }
     int valid_samples = filtered->nb_samples;
     if (decoder->filter_target_samples > 0) {
@@ -374,12 +375,16 @@ static int lj_audio_filter_drain(LJAudioDecoder *decoder)
     }
     const float *filtered_samples = (const float *)filtered->data[0];
     ret = lj_audio_append(decoder, filtered_samples, valid_samples, 1);
-    av_frame_free(&filtered);
     if (ret < 0) {
         lj_fferror(decoder->error, sizeof(decoder->error), "buffering RNNoise output", ret);
-        return -1;
+        result = ret;
+        goto cleanup;
     }
-    return 0;
+    result = 0;
+
+cleanup:
+    av_frame_free(&filtered);
+    return result;
 }
 
 static int lj_audio_filter_feed(LJAudioDecoder *decoder, const float *samples, int frames)
@@ -431,27 +436,29 @@ static int lj_audio_process_swr(LJAudioDecoder *decoder, const uint8_t **input,
     uint8_t *output_data[1] = {(uint8_t *)converted};
     int output_samples = swr_convert(decoder->resampler, output_data, output_capacity,
                                      input, input_samples);
-    if (output_samples < 0) {
-        free(converted);
-        return output_samples;
-    }
-    int ret = 0;
+    int ret = output_samples;
+    if (output_samples < 0)
+        goto cleanup;
     if (decoder->filter_source) {
         // RNNoise receives mono. The resampler is configured accordingly.
         ret = lj_audio_filter_feed(decoder, converted, output_samples);
-        free(converted);
         if (ret < 0)
-            return ret;
+            goto cleanup;
         int drain;
         do {
             drain = lj_audio_filter_drain(decoder);
-            if (drain < 0)
-                return AVERROR_EXTERNAL;
+            if (drain < 0) {
+                ret = drain;
+                goto cleanup;
+            }
         } while (drain == 0);
+        ret = 0;
     } else {
         ret = lj_audio_append(decoder, converted, output_samples, decoder->output_channels);
-        free(converted);
     }
+
+cleanup:
+    free(converted);
     return ret;
 }
 
@@ -459,48 +466,61 @@ static int lj_audio_flush_swr(LJAudioDecoder *decoder)
 {
     if (decoder->swr_flushed)
         return 0;
+    int ret = 0;
+    float *converted = NULL;
     for (;;) {
-        if (lj_cancel_requested(decoder->cancel))
-            return AVERROR_EXIT;
+        if (lj_cancel_requested(decoder->cancel)) {
+            ret = AVERROR_EXIT;
+            goto cleanup;
+        }
         int output_capacity = swr_get_out_samples(decoder->resampler, 0);
         if (output_capacity <= 0)
             break;
         if (output_capacity > 8192)
             output_capacity = 8192;
-        float *converted = malloc((size_t)output_capacity * decoder->output_channels * sizeof(float));
-        if (!converted)
-            return AVERROR(ENOMEM);
+        converted = malloc((size_t)output_capacity * decoder->output_channels * sizeof(float));
+        if (!converted) {
+            ret = AVERROR(ENOMEM);
+            goto cleanup;
+        }
         uint8_t *output_data[1] = {(uint8_t *)converted};
         int output_samples = swr_convert(decoder->resampler, output_data, output_capacity, NULL, 0);
         if (output_samples < 0) {
-            free(converted);
-            return output_samples;
+            ret = output_samples;
+            goto cleanup;
         }
         if (output_samples == 0) {
             free(converted);
+            converted = NULL;
             break;
         }
-        int ret;
         if (decoder->filter_source) {
             ret = lj_audio_filter_feed(decoder, converted, output_samples);
-            if (ret >= 0) {
-                int drain;
-                do {
-                    drain = lj_audio_filter_drain(decoder);
-                    if (drain < 0)
-                        return AVERROR_EXTERNAL;
-                } while (drain == 0);
-            }
+            if (ret < 0)
+                goto cleanup;
+            int drain;
+            do {
+                drain = lj_audio_filter_drain(decoder);
+                if (drain < 0) {
+                    ret = drain;
+                    goto cleanup;
+                }
+            } while (drain == 0);
         } else {
             ret = lj_audio_append(decoder, converted, output_samples,
                                   decoder->output_channels);
+            if (ret < 0)
+                goto cleanup;
         }
         free(converted);
-        if (ret < 0)
-            return ret;
+        converted = NULL;
     }
     decoder->swr_flushed = 1;
-    return 0;
+    ret = 0;
+
+cleanup:
+    free(converted);
+    return ret;
 }
 
 static int lj_audio_decode_more(LJAudioDecoder *decoder)
@@ -535,7 +555,7 @@ static int lj_audio_decode_more(LJAudioDecoder *decoder)
                 do {
                     drain = lj_audio_filter_drain(decoder);
                     if (drain < 0)
-                        return AVERROR_EXTERNAL;
+                        return drain;
                 } while (drain == 0);
             }
             return 0;
