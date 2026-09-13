@@ -9,7 +9,7 @@ func TestDefaultLectureSettings(t *testing.T) {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	if cfg.Silence.WindowMS != 10 || cfg.Silence.ThresholdDB != -38 ||
-		cfg.Silence.MinSilenceMS != 450 || cfg.Silence.MarginMS != 150 || cfg.Silence.HysteresisDB != 4 {
+		cfg.Silence.MinSilenceMS != 450 || cfg.Silence.MarginMS != 150 {
 		t.Fatalf("unexpected silence defaults: %+v", cfg.Silence)
 	}
 }
@@ -25,7 +25,6 @@ func TestValidation(t *testing.T) {
 		"bad HEVC tag":     func(c *Config) { c.HEVCCodecTag = "avc1" },
 		"bad min silence":  func(c *Config) { c.Silence.MinSilenceMS = 1 },
 		"bad margin":       func(c *Config) { c.Silence.MarginMS = -1 },
-		"bad hysteresis":   func(c *Config) { c.Silence.HysteresisDB = -1 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			cfg := base

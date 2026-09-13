@@ -135,7 +135,6 @@ func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
 	threshold := flags.Float64("threshold", cfg.Silence.ThresholdDB, "silence threshold dBFS")
 	minSilence := flags.Int("min-silence", cfg.Silence.MinSilenceMS, "minimum silence milliseconds")
 	margin := flags.Int("margin", cfg.Silence.MarginMS, "speech protection margin milliseconds")
-	hysteresis := flags.Float64("hysteresis", cfg.Silence.HysteresisDB, "hysteresis dB")
 	nonInteractive := flags.Bool("non-interactive", false, "use defaults without wizard")
 	if err := flags.Parse(args[2:]); err != nil {
 		return config.Config{}, false, false, err
@@ -161,7 +160,6 @@ func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
 	cfg.Silence.ThresholdDB = *threshold
 	cfg.Silence.MinSilenceMS = *minSilence
 	cfg.Silence.MarginMS = *margin
-	cfg.Silence.HysteresisDB = *hysteresis
 	if *threads == "auto" {
 		cfg.Threads = 0
 	} else {
@@ -198,7 +196,6 @@ func parseAnalyzeArgs(args []string) (config.Config, error) {
 	flags.Float64Var(&cfg.Silence.ThresholdDB, "threshold", cfg.Silence.ThresholdDB, "silence threshold dBFS")
 	flags.IntVar(&cfg.Silence.MinSilenceMS, "min-silence", cfg.Silence.MinSilenceMS, "minimum silence milliseconds")
 	flags.IntVar(&cfg.Silence.MarginMS, "margin", cfg.Silence.MarginMS, "speech protection margin milliseconds")
-	flags.Float64Var(&cfg.Silence.HysteresisDB, "hysteresis", cfg.Silence.HysteresisDB, "hysteresis dB")
 	if err := flags.Parse(args[1:]); err != nil {
 		return config.Config{}, err
 	}

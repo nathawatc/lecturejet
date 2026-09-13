@@ -5,8 +5,8 @@ Linux CLI for conservative lecture-video shortening.
 ## Philosophy
 
 Speech preservation beats reduction. Defaults: 10 ms windows, -38 dBFS silence
-threshold, 450 ms minimum silence, 150 ms speech margin, 4 dB hysteresis.
-Natural 100–300 ms pauses normally survive.
+threshold, 450 ms minimum silence, 150 ms speech margin. Natural 100–300 ms
+pauses normally survive.
 
 ## Dependencies
 
@@ -75,7 +75,6 @@ Silence controls:
 --threshold DBFS       default -38
 --min-silence MS       default 450
 --margin MS            default 150
---hysteresis DB        default 4
 ```
 
 `--threads auto` selects up to eight ordered batch workers. Bounded queues stream

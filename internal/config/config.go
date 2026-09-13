@@ -35,7 +35,6 @@ type SilenceConfig struct {
 	ThresholdDB  float64
 	MinSilenceMS int
 	MarginMS     int
-	HysteresisDB float64
 }
 
 type Config struct {
@@ -62,7 +61,6 @@ func Default() Config {
 			ThresholdDB:  -38,
 			MinSilenceMS: 450,
 			MarginMS:     150,
-			HysteresisDB: 4,
 		},
 	}
 }
@@ -95,11 +93,7 @@ func (c Config) Validate() error {
 	if c.Silence.MarginMS < 0 {
 		return fmt.Errorf("speech margin cannot be negative")
 	}
-	if c.Silence.HysteresisDB < 0 {
-		return fmt.Errorf("hysteresis cannot be negative")
-	}
-	if math.IsNaN(c.Silence.ThresholdDB) || math.IsInf(c.Silence.ThresholdDB, 0) ||
-		math.IsNaN(c.Silence.HysteresisDB) || math.IsInf(c.Silence.HysteresisDB, 0) {
+	if math.IsNaN(c.Silence.ThresholdDB) || math.IsInf(c.Silence.ThresholdDB, 0) {
 		return fmt.Errorf("silence levels must be finite")
 	}
 	return nil

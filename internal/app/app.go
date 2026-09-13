@@ -154,9 +154,10 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 		decoder.Close()
 	}()
 	detectorConfig := analyze.SilenceConfig{
-		WindowMS: cfg.Silence.WindowMS, ThresholdDB: cfg.Silence.ThresholdDB,
-		MinSilenceMS: cfg.Silence.MinSilenceMS, MarginMS: cfg.Silence.MarginMS,
-		HysteresisDB: cfg.Silence.HysteresisDB,
+		WindowMS:     cfg.Silence.WindowMS,
+		ThresholdDB:  cfg.Silence.ThresholdDB,
+		MinSilenceMS: cfg.Silence.MinSilenceMS,
+		MarginMS:     cfg.Silence.MarginMS,
 	}
 	detector, err := analyze.NewDetector(detectorConfig, cfg.AnalysisSampleRate())
 	if err != nil {

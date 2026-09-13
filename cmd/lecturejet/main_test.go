@@ -24,9 +24,16 @@ func TestParseRejectsConflictingAndInvalidFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"input.mp4", "output.mp4", "--mono", "--stereo"},
 		{"input.mp4", "output.mp4", "--threads", "0"},
+		{"input.mp4", "output.mp4", "--hysteresis", "4"},
 	} {
 		if _, _, _, err := parseRenderArgs(args); err == nil {
 			t.Fatalf("accepted invalid arguments: %v", args)
 		}
+	}
+}
+
+func TestParseAnalyzeRejectsObsoleteHysteresisFlag(t *testing.T) {
+	if _, err := parseAnalyzeArgs([]string{"input.mp4", "--hysteresis", "4"}); err == nil {
+		t.Fatal("accepted obsolete --hysteresis flag in analyze")
 	}
 }

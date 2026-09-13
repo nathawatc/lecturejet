@@ -12,11 +12,10 @@ type SilenceConfig struct {
 	ThresholdDB  float64
 	MinSilenceMS int
 	MarginMS     int
-	HysteresisDB float64
 }
 
 func DefaultSilenceConfig() SilenceConfig {
-	return SilenceConfig{WindowMS: 10, ThresholdDB: -38, MinSilenceMS: 450, MarginMS: 150, HysteresisDB: 4}
+	return SilenceConfig{WindowMS: 10, ThresholdDB: -38, MinSilenceMS: 450, MarginMS: 150}
 }
 
 type WindowMetric struct {
@@ -31,7 +30,6 @@ type Detector struct {
 	minSamples   int64
 	marginNS     timeline.TimeNS
 	silenceLevel float32
-	speechLevel  float32
 	state        detectorState
 	quietStart   int64
 	lastSample   int64
@@ -50,8 +48,7 @@ func NewDetector(config SilenceConfig, sampleRate int) (*Detector, error) {
 		return nil, fmt.Errorf("sample rate must be positive")
 	}
 	if config.WindowMS <= 0 || config.MinSilenceMS < config.WindowMS || config.MarginMS < 0 ||
-		config.HysteresisDB < 0 || math.IsNaN(config.ThresholdDB) || math.IsInf(config.ThresholdDB, 0) ||
-		math.IsNaN(config.HysteresisDB) || math.IsInf(config.HysteresisDB, 0) {
+		math.IsNaN(config.ThresholdDB) || math.IsInf(config.ThresholdDB, 0) {
 		return nil, fmt.Errorf("invalid silence configuration")
 	}
 	threshold := float32(math.Pow(10, config.ThresholdDB/20))
@@ -60,7 +57,6 @@ func NewDetector(config SilenceConfig, sampleRate int) (*Detector, error) {
 		minSamples:   int64(config.MinSilenceMS) * int64(sampleRate) / 1000,
 		marginNS:     timeline.TimeNS(config.MarginMS) * 1_000_000,
 		silenceLevel: threshold,
-		speechLevel:  threshold * float32(math.Pow(10, config.HysteresisDB/20)),
 	}, nil
 }
 
@@ -78,7 +74,6 @@ func (d *Detector) Consume(metrics []WindowMetric) {
 			level = metric.Peak
 		}
 		silent := level < d.silenceLevel
-		speech := level >= d.speechLevel
 		switch d.state {
 		case stateSpeech:
 			if silent {
@@ -86,12 +81,7 @@ func (d *Detector) Consume(metrics []WindowMetric) {
 				d.quietStart = metric.StartSample
 			}
 		case stateMaybeSilence:
-			if speech {
-				d.finishCandidate(metric.StartSample)
-				d.state = stateSpeech
-			} else if !silent {
-				// Uncertain-level audio ends a cut candidate. Hysteresis still
-				// requires a stronger level to classify a definite speech edge.
+			if !silent {
 				d.finishCandidate(metric.StartSample)
 				d.state = stateSpeech
 			}
