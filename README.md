@@ -1,153 +1,85 @@
 # Lecture Jet
 
-Linux CLI for conservative lecture-video shortening.
+Removes silence from recorded lectures while preserving natural speech cadence.
 
-## Philosophy
+## Key Features
 
-Speech preservation beats reduction. Defaults: 10 ms windows, -38 dBFS silence
-threshold, 450 ms minimum silence, 150 ms speech margin. Natural 100–300 ms
-pauses normally survive.
+- **Conservative Trimming**: Prioritizes speech preservation over reduction.
+- **Hardware-Accelerated Encoding**: Fast H.264 and HEVC encoding via VAAPI.
+- **Interactive Wizard**: Automatically probes your GPU for available encoders.
+- **Optional RNNoise Denoising**: Filters out background noise.
 
-## Dependencies
+## Installation
 
-Arch Linux packages:
+### System Requirements
+
+- **OS**: Linux (kernel 3.15+ for atomic replacement support)
+- **Hardware**: GPU with VAAPI support
+- **Go**: 1.22 or newer
+- **FFmpeg**
+
+### Arch Linux
 
 ```bash
 sudo pacman -S --needed go ffmpeg libva-mesa-driver make pkgconf
 ```
 
-`pkg-config` must discover FFmpeg development headers and libraries:
+Ensure your user account has read permission for the render node:
 
 ```bash
-pkg-config --cflags --libs libavformat libavcodec libavutil libswresample
-libswscale libavfilter
+ls -l /dev/dri/renderD128
 ```
 
-VAAPI needs usable render node such as `/dev/dri/renderD128`, working
-Mesa/vendor driver, and permission to open it. `vainfo` helps troubleshooting
-but is optional.
-
-## Build and test
+### Build from Source
 
 ```bash
 make build
-make test
-make vet
-make test-race
-make bench
 ```
 
-Binary: `build/lecturejet`.
+The compiled binary will be placed at `build/lecturejet`.
 
-## Usage
+## Quickstart
 
-```bash
-lecturejet --help
-lecturejet analyze --help
-lecturejet --version
-```
-
-Basic invocation opens wizard in terminal:
+Run `lecturejet` with an input file and the desired output file:
 
 ```bash
 lecturejet input.mp4 output.mp4
 ```
 
-Output must end in `.mp4`. Existing output files are protected and not
-overwritten by default; pass `--force` to allow replacing an existing file.
+This will probe your hardware, choose an available video encoder,
+and ask whether to enable noise reduction and mono audio downmixing.
 
-Wizard offers only VAAPI codecs successfully probed for input dimensions, then
-asks about RNNoise and mono output. Flags resolve choices for automation:
+For more options, see `lecturejet -h`.
 
-```bash
-lecturejet lecture.mp4 output.mp4 \
-  --video-codec hevc \
-  --hevc-tag hvc1 \
-  --vaapi-device /dev/dri/renderD128 \
-  --rnnoise --rnnoise-strength 80 --rnnoise-model /path/to/model.rnnn \
-  --mono --threads auto --non-interactive
-```
+> [!NOTE]
+> Output files must have the `.mp4` extension.
+> Existing files are protected by default unless `--force` is passed.
 
-`--stereo` produces two-channel output (incompatible with `--rnnoise`). `--mono`
-default. Codec values: `hevc`, `h264`. HEVC tags: `--hevc-tag hev1` (default) or
-`hvc1` for Apple compatibility.
+### Noise Suppression (RNNoise)
 
-Analysis-only mode:
+Integrates FFmpeg's `arnndn` filter for noise reduction.
 
-```bash
-lecturejet analyze lecture.mp4 --threads auto
-```
-
-Silence controls:
-
-```text
---threshold DBFS       default -38
---min-silence MS       default 450
---margin MS            default 150
-```
-
-`--threads auto` selects up to eight ordered batch workers. Bounded queues
-stream PCM; memory stays bounded regardless of lecture duration.
-
-## RNNoise
-
-Optional RNNoise uses FFmpeg's public `arnndn` filter. RNNoise currently
-requires mono output. Use `--mono` with `--rnnoise`. Provide compatible `.rnnn`
-model with `--rnnoise-model`; no model bundled. Strength is 0–100 and maps to
-filter mix; 80 is lecture default, with 75–100 suitable for strong lecture
-denoising. Missing model or unavailable filter is an
-explicit error.
-
-Analysis and rendering use same processed audio path. One sequential decoder
-preserves filter state; blocks never split across independent recurrent filter
-instances.
-
-## Hardware and timestamp behavior
-
-Native bridge uses public FFmpeg APIs for demux, decode, resample, VAAPI frame
-upload, encode, and mux. Video decodes in software and uploads NV12 frames to
-VAAPI; this is the correctness-first fallback path. Audio cuts split at integer
-48 kHz sample boundaries. Video frames use display timestamps
-(`best_effort_timestamp`), not packet DTS; dropped-frame gaps map through the
-compact timeline.
-
-Output writes to same-directory temporary `.mp4`, then atomically renames after
-trailer writing succeeds (using no-replace publication unless `--force` is
-enabled). HEVC VAAPI encoding is muxed as `hev1`; requested `hvc1` uses a
-lossless stream-copy remux before the final atomic rename.
-Interrupt/cancel paths never present temporary output as final. VAAPI video uses
-constant-QP 28 by default, so bitrate follows scene complexity instead of
-forcing every lecture through a 6 Mb/s stream.
-
-## Synthetic integration test
-
-Script creates deterministic mono/48 kHz, stereo/44.1 kHz, 30 fps, and 29.97 fps
-media without external/copyrighted input:
-
-```bash
-make integration
-```
-
-H.264 VAAPI test skips only without render node. HEVC reports skip when selected
-device rejects it. Both outputs are probed and decoded when available.
+- `--rnnoise`: Enable noise reduction (requires `--mono`).
+- `--rnnoise-model <path>`: Path to a compatible `.rnnn` model file.
+- `--rnnoise-strength <0-100>`: Suppression strength (default: `80`).
 
 ## Troubleshooting
 
-- `no usable VAAPI encoder`: check `/dev/dri/renderD*`, user groups, vendor
-  driver, and `ffmpeg -hide_banner -encoders | grep vaapi`.
-- `opening VAAPI device ... permission denied`: grant render-device access or
-  choose another `--vaapi-device`.
-- `encoder is unavailable for selected VAAPI device`: use wizard codec;
-  hardware capability is device-specific.
-- `opening RNNoise ... model path is required`: pass
-  `--rnnoise-model /path/to/model.rnnn`.
-- Native FFmpeg errors include operation and library detail. LectureJet never
-  silently changes explicitly selected codec.
+- **`no usable VAAPI encoder`**:
+  Ensure your GPU drivers are installed and verify that FFmpeg detects VAAPI encoders:
 
-## Known limitations
+  ```bash
+  ffmpeg -hide_banner -encoders | grep vaapi
+  ```
 
-v0.1 requires VAAPI video output and AAC audio. Hardware decode zero-copy is not
-enabled; software decode plus VAAPI upload is used. AAC may add one encoder
-frame of padding (normally <= 21.3 ms at 48 kHz); frame cadence may make video
-duration differ from continuous timeline by up to one source frame. RNNoise
-requires an externally supplied model.
+- **`opening VAAPI device ... permission denied`**:
+  Add your user to the appropriate group (e.g., `sudo usermod -aG render $USER`).
+
+- **`encoder is unavailable for selected VAAPI device`**:
+  Your GPU may not support the selected codec.
+
+## Known Limitations
+
+- Requires Linux and a VAAPI-compatible GPU for video encoding.
+- The output container must be MP4 with AAC audio.
+- RNNoise requires an externally provided `.rnnn` model file.
