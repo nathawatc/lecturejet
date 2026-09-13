@@ -16,6 +16,18 @@ import (
 func TestAnalyzeCancellationWaitsForDecoder(t *testing.T) {
 	path := os.Getenv("LECTUREJET_TEST_MEDIA")
 	if path == "" {
+		candidates := []string{
+			"testdata/synthetic.mp4",
+			filepath.Join("..", "..", "testdata", "synthetic.mp4"),
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				path = c
+				break
+			}
+		}
+	}
+	if path == "" {
 		t.Skip("set LECTUREJET_TEST_MEDIA to run cancellation integration test")
 	}
 	path, err := filepath.Abs(path)
@@ -30,6 +42,46 @@ func TestAnalyzeCancellationWaitsForDecoder(t *testing.T) {
 	_, err = Analyze(ctx, cfg, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Analyze error=%v, want context cancellation", err)
+	}
+}
+
+func TestAnalyzeSyntheticFixture(t *testing.T) {
+	path := os.Getenv("LECTUREJET_TEST_MEDIA")
+	if path == "" {
+		candidates := []string{
+			"testdata/synthetic.mp4",
+			filepath.Join("..", "..", "testdata", "synthetic.mp4"),
+		}
+		for _, c := range candidates {
+			if _, err := os.Stat(c); err == nil {
+				path = c
+				break
+			}
+		}
+	}
+	if path == "" {
+		t.Skip("fixture testdata/synthetic.mp4 not found")
+	}
+	path, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Input = path
+	cfg.Threads = 2
+
+	result, err := Analyze(context.Background(), cfg, nil)
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+	if result.AudioSamples <= 0 {
+		t.Fatalf("Analyze produced %d audio samples, want > 0", result.AudioSamples)
+	}
+	if result.Duration <= 0 {
+		t.Fatalf("Analyze produced invalid duration %v", result.Duration)
+	}
+	if result.Timeline.OutputDuration() <= 0 {
+		t.Fatalf("Analyze produced empty timeline output duration")
 	}
 }
 

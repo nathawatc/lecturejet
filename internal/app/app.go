@@ -91,11 +91,23 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 		defer close(decodeDone)
 		defer close(blocks)
 		defer close(decodeErr)
-		buffer := make([]float32, 0, blockSamples)
+
+		splitter := newPCMBlockSplitter(blockSamples)
 		readBuffer := make([]float32, 8192)
-		var blockStart int64
-		index := 0
 		lastBucket := -1
+
+		emit := func(block analyze.PCMBlock) error {
+			if err := analysisCtx.Err(); err != nil {
+				return err
+			}
+			select {
+			case blocks <- block:
+				return nil
+			case <-analysisCtx.Done():
+				return analysisCtx.Err()
+			}
+		}
+
 		for {
 			count, start, readErr := decoder.Read(readBuffer)
 			if readErr != nil {
@@ -107,31 +119,16 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 				return
 			}
 			if count == 0 {
-				if len(buffer) > 0 {
-					select {
-					case blocks <- analyze.PCMBlock{Index: index, StartSample: blockStart, Samples: buffer}:
-					case <-analysisCtx.Done():
-						decodeErr <- analysisCtx.Err()
-						return
-					}
+				if err := splitter.Flush(emit); err != nil {
+					decodeErr <- err
+					return
 				}
 				decodeErr <- nil
 				return
 			}
-			if len(buffer) == 0 {
-				blockStart = start
-			}
-			buffer = append(buffer, readBuffer[:count]...)
-			if len(buffer) == blockSamples {
-				select {
-				case blocks <- analyze.PCMBlock{Index: index, StartSample: blockStart, Samples: buffer}:
-				case <-analysisCtx.Done():
-					decodeErr <- analysisCtx.Err()
-					return
-				}
-				index++
-				blockStart += blockSamples
-				buffer = make([]float32, 0, blockSamples)
+			if err := splitter.Push(readBuffer[:count], start, emit); err != nil {
+				decodeErr <- err
+				return
 			}
 			if status != nil && info.DurationNS > 0 {
 				percent := int((start + int64(count)) * 100 / int64(timeline.SampleIndexAtOrAfter(info.DurationNS, cfg.AnalysisSampleRate())))
