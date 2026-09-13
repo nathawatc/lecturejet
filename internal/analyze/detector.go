@@ -4,19 +4,9 @@ import (
 	"fmt"
 	"math"
 
+	"codeberg.org/nathawat/lecturejet/internal/config"
 	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
-
-type SilenceConfig struct {
-	WindowMS     int
-	ThresholdDB  float64
-	MinSilenceMS int
-	MarginMS     int
-}
-
-func DefaultSilenceConfig() SilenceConfig {
-	return SilenceConfig{WindowMS: 10, ThresholdDB: -38, MinSilenceMS: 450, MarginMS: 150}
-}
 
 type WindowMetric struct {
 	StartSample int64
@@ -43,19 +33,19 @@ const (
 	stateMaybeSilence
 )
 
-func NewDetector(config SilenceConfig, sampleRate int) (*Detector, error) {
+func NewDetector(cfg config.SilenceConfig, sampleRate int) (*Detector, error) {
 	if sampleRate <= 0 {
 		return nil, fmt.Errorf("sample rate must be positive")
 	}
-	if config.WindowMS <= 0 || config.MinSilenceMS < config.WindowMS || config.MarginMS < 0 ||
-		math.IsNaN(config.ThresholdDB) || math.IsInf(config.ThresholdDB, 0) {
+	if cfg.WindowMS <= 0 || cfg.MinSilenceMS < cfg.WindowMS || cfg.MarginMS < 0 ||
+		math.IsNaN(cfg.ThresholdDB) || math.IsInf(cfg.ThresholdDB, 0) {
 		return nil, fmt.Errorf("invalid silence configuration")
 	}
-	threshold := float32(math.Pow(10, config.ThresholdDB/20))
+	threshold := float32(math.Pow(10, cfg.ThresholdDB/20))
 	return &Detector{
 		sampleRate:   sampleRate,
-		minSamples:   int64(config.MinSilenceMS) * int64(sampleRate) / 1000,
-		marginNS:     timeline.TimeNS(config.MarginMS) * 1_000_000,
+		minSamples:   int64(cfg.MinSilenceMS) * int64(sampleRate) / 1000,
+		marginNS:     timeline.TimeNS(cfg.MarginMS) * 1_000_000,
 		silenceLevel: threshold,
 	}, nil
 }

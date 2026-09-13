@@ -429,9 +429,9 @@ func isTerminal(file *os.File) bool {
 }
 
 func printResult(out io.Writer, result app.Result) {
-	fmt.Fprintf(out, "Duration       %s\n", app.FormatDuration(result.Duration))
-	fmt.Fprintf(out, "Kept           %s\n", app.FormatDuration(result.Kept))
-	fmt.Fprintf(out, "Removed        %s\n", app.FormatDuration(result.Removed))
+	fmt.Fprintf(out, "Duration       %s\n", result.Duration)
+	fmt.Fprintf(out, "Kept           %s\n", result.Kept)
+	fmt.Fprintf(out, "Removed        %s\n", result.Removed)
 	fmt.Fprintf(out, "Cuts           %d\n", result.Cuts)
 	fmt.Fprintf(out, "Reduction      %.2f%%\n", result.Reduction)
 }

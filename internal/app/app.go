@@ -137,8 +137,8 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 				}
 				if bucket != lastBucket {
 					fmt.Fprintf(status, "\rAnalyzing audio... %d%%  %s / %s", percent,
-						FormatDuration(timeline.TimeForSamples(start+int64(count), cfg.AnalysisSampleRate())),
-						FormatDuration(info.DurationNS))
+						timeline.TimeForSamples(start+int64(count), cfg.AnalysisSampleRate()),
+						info.DurationNS)
 					lastBucket = bucket
 				}
 			}
@@ -149,13 +149,7 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 		<-decodeDone
 		decoder.Close()
 	}()
-	detectorConfig := analyze.SilenceConfig{
-		WindowMS:     cfg.Silence.WindowMS,
-		ThresholdDB:  cfg.Silence.ThresholdDB,
-		MinSilenceMS: cfg.Silence.MinSilenceMS,
-		MarginMS:     cfg.Silence.MarginMS,
-	}
-	detector, err := analyze.NewDetector(detectorConfig, cfg.AnalysisSampleRate())
+	detector, err := analyze.NewDetector(cfg.Silence, cfg.AnalysisSampleRate())
 	if err != nil {
 		return Result{}, err
 	}
@@ -275,18 +269,4 @@ func createTemporaryOutput(directory, base string) (string, error) {
 		return "", err
 	}
 	return path, nil
-}
-
-func FormatDuration(value timeline.TimeNS) string {
-	if value < 0 {
-		value = 0
-	}
-	totalMS := int64(value) / 1_000_000
-	ms := totalMS % 1000
-	totalSeconds := totalMS / 1000
-	seconds := totalSeconds % 60
-	totalMinutes := totalSeconds / 60
-	minutes := totalMinutes % 60
-	hours := totalMinutes / 60
-	return fmt.Sprintf("%02d:%02d:%02d.%03d", hours, minutes, seconds, ms)
 }

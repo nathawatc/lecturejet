@@ -11,8 +11,9 @@ import (
 type VideoCodec string
 
 const (
-	VideoHEVC VideoCodec = "hevc"
-	VideoH264 VideoCodec = "h264"
+	SampleRate            = 48000
+	VideoHEVC  VideoCodec = "hevc"
+	VideoH264  VideoCodec = "h264"
 )
 
 type HEVCCodecTag string
@@ -109,6 +110,6 @@ func (c Config) Validate() error {
 	return nil
 }
 
-func (c Config) AnalysisSampleRate() int { return 48000 }
+func (c Config) AnalysisSampleRate() int { return SampleRate }
 
 func (c Config) NoiseStrength() float64 { return float64(c.Noise.Strength) / 100 }

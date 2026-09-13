@@ -67,6 +67,25 @@ func TestSampleBoundaryConversions(t *testing.T) {
 	}
 }
 
+func TestTimeNSFormatting(t *testing.T) {
+	cases := []struct {
+		input TimeNS
+		want  string
+	}{
+		{-1000, "00:00:00.000"},
+		{0, "00:00:00.000"},
+		{500_000_000, "00:00:00.500"},
+		{1_000_000_000, "00:00:01.000"},
+		{61_500_000_000, "00:01:01.500"},
+		{3661_234_000_000, "01:01:01.234"},
+	}
+	for _, tc := range cases {
+		if got := tc.input.String(); got != tc.want {
+			t.Errorf("TimeNS(%d).String() = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
 func TestFuzzLikeMappingProperties(t *testing.T) {
 	rng := rand.New(rand.NewSource(7))
 	for run := 0; run < 500; run++ {

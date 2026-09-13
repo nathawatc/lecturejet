@@ -8,6 +8,20 @@ import (
 
 type TimeNS int64
 
+func (t TimeNS) String() string {
+	if t < 0 {
+		t = 0
+	}
+	totalMS := int64(t) / 1_000_000
+	ms := totalMS % 1000
+	totalSeconds := totalMS / 1000
+	seconds := totalSeconds % 60
+	totalMinutes := totalSeconds / 60
+	minutes := totalMinutes % 60
+	hours := totalMinutes / 60
+	return fmt.Sprintf("%02d:%02d:%02d.%03d", hours, minutes, seconds, ms)
+}
+
 const (
 	Keep Action = iota
 	Cut

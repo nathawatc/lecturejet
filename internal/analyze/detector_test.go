@@ -4,12 +4,13 @@ import (
 	"math"
 	"testing"
 
+	"codeberg.org/nathawat/lecturejet/internal/config"
 	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
 
 func TestDetectorPreservesShortSilenceAndCutsLongSilence(t *testing.T) {
-	config := DefaultSilenceConfig()
-	detector, err := NewDetector(config, 1000)
+	cfg := config.Default().Silence
+	detector, err := NewDetector(cfg, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +27,7 @@ func TestDetectorPreservesShortSilenceAndCutsLongSilence(t *testing.T) {
 		t.Fatalf("short silence cuts=%v", shortCuts)
 	}
 
-	detector, err = NewDetector(config, 1000)
+	detector, err = NewDetector(cfg, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,7 @@ func TestDetectorPreservesShortSilenceAndCutsLongSilence(t *testing.T) {
 }
 
 func TestAudioAboveThresholdEndsSilenceCandidate(t *testing.T) {
-	detector, err := NewDetector(DefaultSilenceConfig(), 1000)
+	detector, err := NewDetector(config.Default().Silence, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,9 +69,9 @@ func TestAudioAboveThresholdEndsSilenceCandidate(t *testing.T) {
 }
 
 func TestDetectorMarginShrinksCutToProtectSpeech(t *testing.T) {
-	config := DefaultSilenceConfig()
-	config.MarginMS = 100
-	detector, err := NewDetector(config, 1000)
+	cfg := config.Default().Silence
+	cfg.MarginMS = 100
+	detector, err := NewDetector(cfg, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,9 +91,9 @@ func TestDetectorMarginShrinksCutToProtectSpeech(t *testing.T) {
 }
 
 func TestLowVolumeSpeechNearThresholdEndsCandidate(t *testing.T) {
-	config := DefaultSilenceConfig()
-	config.MarginMS = 0
-	detector, err := NewDetector(config, 1000)
+	cfg := config.Default().Silence
+	cfg.MarginMS = 0
+	detector, err := NewDetector(cfg, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,13 +113,13 @@ func TestLowVolumeSpeechNearThresholdEndsCandidate(t *testing.T) {
 }
 
 func TestAudioJustAboveThresholdEndsSilenceCandidate(t *testing.T) {
-	config := DefaultSilenceConfig()
-	config.MarginMS = 0
-	detector, err := NewDetector(config, 1000)
+	cfg := config.Default().Silence
+	cfg.MarginMS = 0
+	detector, err := NewDetector(cfg, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	thresholdLevel := float32(math.Pow(10, config.ThresholdDB/20))
+	thresholdLevel := float32(math.Pow(10, cfg.ThresholdDB/20))
 	justAbove := thresholdLevel + 0.0001
 
 	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
@@ -138,13 +139,13 @@ func TestAudioJustAboveThresholdEndsSilenceCandidate(t *testing.T) {
 }
 
 func TestAudioExactlyAtThresholdEndsSilenceCandidate(t *testing.T) {
-	config := DefaultSilenceConfig()
-	config.MarginMS = 0
-	detector, err := NewDetector(config, 1000)
+	cfg := config.Default().Silence
+	cfg.MarginMS = 0
+	detector, err := NewDetector(cfg, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	thresholdLevel := float32(math.Pow(10, config.ThresholdDB/20))
+	thresholdLevel := float32(math.Pow(10, cfg.ThresholdDB/20))
 
 	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
 	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
@@ -163,9 +164,9 @@ func TestAudioExactlyAtThresholdEndsSilenceCandidate(t *testing.T) {
 }
 
 func TestSilenceExactlyAtMinimumIsRemoved(t *testing.T) {
-	config := DefaultSilenceConfig()
-	config.MarginMS = 0
-	detector, err := NewDetector(config, 1000)
+	cfg := config.Default().Silence
+	cfg.MarginMS = 0
+	detector, err := NewDetector(cfg, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,9 +185,9 @@ func TestSilenceExactlyAtMinimumIsRemoved(t *testing.T) {
 }
 
 func TestShortImpulseInsideSilenceDoesNotCreateAggressiveCut(t *testing.T) {
-	config := DefaultSilenceConfig()
-	config.MarginMS = 0
-	detector, err := NewDetector(config, 1000)
+	cfg := config.Default().Silence
+	cfg.MarginMS = 0
+	detector, err := NewDetector(cfg, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +220,7 @@ func TestWindowMetricsRejectNonFiniteForDetection(t *testing.T) {
 }
 
 func TestDetectorValidation(t *testing.T) {
-	cfg := DefaultSilenceConfig()
+	cfg := config.Default().Silence
 	if _, err := NewDetector(cfg, 0); err == nil {
 		t.Fatal("expected error for zero sample rate")
 	}
