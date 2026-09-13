@@ -38,6 +38,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if err := app.Preflight(cfg); err != nil {
+		return err
+	}
 	deviceExplicit := cfg.VAAPIDevice != ""
 	info, err := media.Probe(cfg.Input)
 	if err != nil {
@@ -152,6 +158,7 @@ func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
 	cfg.Input, cfg.Output = args[0], args[1]
 	flags := flag.NewFlagSet("lecturejet", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	force := flags.Bool("force", false, "allow replacing an existing output file")
 	threads := flags.String("threads", "auto", "analysis workers or auto")
 	codec := flags.String("video-codec", string(cfg.VideoCodec), "hevc or h264")
 	hevcTag := flags.String("hevc-tag", string(cfg.HEVCCodecTag), "HEVC codec tag: hev1 or hvc1")
@@ -174,6 +181,7 @@ func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
 	if *mono && *stereo {
 		return config.Config{}, false, false, fmt.Errorf("--mono and --stereo conflict")
 	}
+	cfg.Force = *force
 	cfg.VideoCodec = config.VideoCodec(strings.ToLower(*codec))
 	cfg.HEVCCodecTag = config.HEVCCodecTag(strings.ToLower(*hevcTag))
 	cfg.VAAPIDevice = *device
@@ -214,7 +222,7 @@ func parseAnalyzeArgs(args []string) (config.Config, error) {
 	}
 	cfg := config.Default()
 	cfg.Input = args[0]
-	cfg.Output = "analysis"
+	cfg.Output = "analysis.mp4"
 	flags := flag.NewFlagSet("lecturejet analyze", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	threads := flags.String("threads", "auto", "analysis workers or auto")

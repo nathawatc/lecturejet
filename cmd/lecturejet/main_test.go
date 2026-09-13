@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,9 +20,123 @@ func TestParseRenderFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	if interactive || !explicit || cfg.VideoCodec != config.VideoHEVC ||
-		cfg.HEVCCodecTag != config.HEVCCodecTagHVC1 || cfg.Audio.Mono || cfg.Threads != 0 {
+		cfg.HEVCCodecTag != config.HEVCCodecTagHVC1 || cfg.Audio.Mono || cfg.Threads != 0 || cfg.Force {
 		t.Fatalf("unexpected parsed config: %+v interactive=%v explicit=%v", cfg, interactive, explicit)
 	}
+}
+
+func TestParseRenderForceFlag(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		wantForce bool
+	}{
+		{
+			name:      "default no force",
+			args:      []string{"input.mp4", "output.mp4"},
+			wantForce: false,
+		},
+		{
+			name:      "--force flag present",
+			args:      []string{"input.mp4", "output.mp4", "--force"},
+			wantForce: true,
+		},
+		{
+			name:      "--force=true",
+			args:      []string{"input.mp4", "output.mp4", "--force=true"},
+			wantForce: true,
+		},
+		{
+			name:      "--force=false",
+			args:      []string{"input.mp4", "output.mp4", "--force=false"},
+			wantForce: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, _, _, err := parseRenderArgs(tc.args)
+			if err != nil {
+				t.Fatalf("unexpected parse error: %v", err)
+			}
+			if cfg.Force != tc.wantForce {
+				t.Fatalf("expected Force=%v, got %v", tc.wantForce, cfg.Force)
+			}
+		})
+	}
+}
+
+func TestParseAnalyzeRejectsForceFlag(t *testing.T) {
+	if _, err := parseAnalyzeArgs([]string{"input.mp4", "--force"}); err == nil {
+		t.Fatal("accepted invalid --force flag in analyze")
+	}
+}
+
+func TestRunEarlyValidationBeforeAnalysis(t *testing.T) {
+	dir := t.TempDir()
+	existingOutput := filepath.Join(dir, "existing.mp4")
+	if err := os.WriteFile(existingOutput, []byte("existing content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	t.Run("unsupported extension rejected before probing", func(t *testing.T) {
+		err := run([]string{"input.mp4", "output.mkv", "--non-interactive"}, nil, &stdout, &stderr)
+		if err == nil {
+			t.Fatal("expected error for .mkv extension, got nil")
+		}
+		if !strings.Contains(err.Error(), ".mp4 output only") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("same input and output rejected before probing", func(t *testing.T) {
+		err := run([]string{"input.mp4", "./input.mp4", "--non-interactive"}, nil, &stdout, &stderr)
+		if err == nil {
+			t.Fatal("expected error for same input and output, got nil")
+		}
+		if !strings.Contains(err.Error(), "must not refer to the same file") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("existing destination without force rejected before probing", func(t *testing.T) {
+		err := run([]string{"input.mp4", existingOutput, "--non-interactive"}, nil, &stdout, &stderr)
+		if err == nil {
+			t.Fatal("expected error for existing destination without --force, got nil")
+		}
+		if !strings.Contains(err.Error(), "already exists") || !strings.Contains(err.Error(), "--force") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+		// Content must remain untouched
+		data, readErr := os.ReadFile(existingOutput)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if string(data) != "existing content" {
+			t.Fatalf("existing destination was modified: %q", string(data))
+		}
+	})
+
+	t.Run("existing destination with force passes preflight and reaches probe", func(t *testing.T) {
+		err := run([]string{filepath.Join(dir, "nonexistent-input.mp4"), existingOutput, "--force", "--non-interactive"}, nil, &stdout, &stderr)
+		if err == nil {
+			t.Fatal("expected probe error on nonexistent input, got nil")
+		}
+		// Should fail on probing input, NOT on output-existence
+		if !strings.Contains(err.Error(), "probe ") {
+			t.Fatalf("expected failure at media probe, got: %v", err)
+		}
+		// Content must remain untouched
+		data, readErr := os.ReadFile(existingOutput)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if string(data) != "existing content" {
+			t.Fatalf("existing destination was modified: %q", string(data))
+		}
+	})
 }
 
 func TestParseRenderVideoCodecExplicitness(t *testing.T) {

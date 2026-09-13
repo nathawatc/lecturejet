@@ -3,7 +3,9 @@ package config
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 type VideoCodec string
@@ -40,6 +42,7 @@ type SilenceConfig struct {
 type Config struct {
 	Input        string
 	Output       string
+	Force        bool
 	Threads      int
 	VideoCodec   VideoCodec
 	HEVCCodecTag HEVCCodecTag
@@ -51,6 +54,7 @@ type Config struct {
 
 func Default() Config {
 	return Config{
+		Force:        false,
 		Threads:      runtime.NumCPU(),
 		VideoCodec:   VideoHEVC,
 		HEVCCodecTag: HEVCCodecTagHEV1,
@@ -71,6 +75,9 @@ func (c Config) Validate() error {
 	}
 	if c.Output == "" {
 		return fmt.Errorf("output path is required")
+	}
+	if strings.ToLower(filepath.Ext(c.Output)) != ".mp4" {
+		return fmt.Errorf("unsupported output format %q: v0.1.0 supports .mp4 output only", c.Output)
 	}
 	if c.Threads < 0 {
 		return fmt.Errorf("threads cannot be negative")

@@ -47,11 +47,15 @@ Basic invocation opens wizard in terminal:
 lecturejet input.mp4 output.mp4
 ```
 
+Output must end in `.mp4`. Existing output files are protected and not
+overwritten by default; pass `--force` to allow replacing an existing file.
+
 Wizard offers only VAAPI codecs successfully probed for input dimensions, then
 asks about RNNoise and mono output. Flags resolve choices for automation:
 
 ```bash
 lecturejet lecture.mp4 output.mp4 \
+  --force \
   --video-codec hevc \
   --hevc-tag hvc1 \
   --vaapi-device /dev/dri/renderD128 \
@@ -59,9 +63,10 @@ lecturejet lecture.mp4 output.mp4 \
   --mono --threads auto --non-interactive
 ```
 
-`--stereo` produces two-channel output (incompatible with `--rnnoise`). `--mono`
-default. Codec values: `hevc`, `h264`. HEVC tags: `--hevc-tag hev1` (default) or
-`hvc1` for Apple compatibility.
+`--force` allows replacing an existing regular output file. `--stereo` produces
+two-channel output (incompatible with `--rnnoise`). `--mono` default. Codec
+values: `hevc`, `h264`. HEVC tags: `--hevc-tag hev1` (default) or `hvc1` for
+Apple compatibility.
 
 Analysis-only mode:
 
@@ -103,8 +108,9 @@ VAAPI; this is the correctness-first fallback path. Audio cuts split at integer
 compact timeline.
 
 Output writes to same-directory temporary `.mp4`, then atomically renames after
-trailer writing succeeds. HEVC VAAPI encoding is muxed as `hev1`; requested
-`hvc1` uses a lossless stream-copy remux before the final atomic rename.
+trailer writing succeeds (using no-replace publication unless `--force` is
+enabled). HEVC VAAPI encoding is muxed as `hev1`; requested `hvc1` uses a
+lossless stream-copy remux before the final atomic rename.
 Interrupt/cancel paths never present temporary output as final. VAAPI video uses
 constant-QP 28 by default, so bitrate follows scene complexity instead of
 forcing every lecture through a 6 Mb/s stream.

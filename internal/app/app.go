@@ -203,10 +203,8 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	inputPath, inputErr := filepath.Abs(cfg.Input)
-	outputPath, outputErr := filepath.Abs(cfg.Output)
-	if inputErr == nil && outputErr == nil && inputPath == outputPath {
-		return fmt.Errorf("input and output paths must differ")
+	if err := Preflight(cfg); err != nil {
+		return err
 	}
 	if result.VAAPIDevice == "" {
 		return fmt.Errorf("no usable VAAPI device selected")
@@ -262,8 +260,8 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := os.Rename(finalPath, cfg.Output); err != nil {
-		return fmt.Errorf("publishing output: %w", err)
+	if err := Publish(finalPath, cfg.Output, cfg.Force); err != nil {
+		return err
 	}
 	if status != nil {
 		fmt.Fprintf(status, "Rendering %s VAAPI... 100%%\n", strings.ToUpper(string(cfg.VideoCodec)))

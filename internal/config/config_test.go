@@ -5,7 +5,7 @@ import "testing"
 func TestDefaultLectureSettings(t *testing.T) {
 	cfg := Default()
 	if cfg.VideoCodec != VideoHEVC || cfg.HEVCCodecTag != HEVCCodecTagHEV1 ||
-		!cfg.Audio.Mono || cfg.Noise.Strength != 80 {
+		!cfg.Audio.Mono || cfg.Noise.Strength != 80 || cfg.Force {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	if cfg.Silence.WindowMS != 10 || cfg.Silence.ThresholdDB != -38 ||
@@ -39,6 +39,33 @@ func TestValidation(t *testing.T) {
 	base.HEVCCodecTag = HEVCCodecTagHVC1
 	if err := base.Validate(); err != nil {
 		t.Fatalf("valid HEVC tag and zero strength rejected: %v", err)
+	}
+}
+
+func TestOutputExtensionValidation(t *testing.T) {
+	tests := []struct {
+		output  string
+		wantErr bool
+	}{
+		{"out.mp4", false},
+		{"out.MP4", false},
+		{"out.mkv", true},
+		{"out.mov", true},
+		{"out", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.output, func(t *testing.T) {
+			cfg := Default()
+			cfg.Input = "in.mp4"
+			cfg.Output = tc.output
+			err := cfg.Validate()
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error for output %q, got nil", tc.output)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error for output %q: %v", tc.output, err)
+			}
+		})
 	}
 }
 

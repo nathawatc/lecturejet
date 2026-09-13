@@ -1,3 +1,5 @@
+//go:build cgo && linux
+
 package media
 
 /*
@@ -58,20 +60,6 @@ func (handle *cancelHandle) close() {
 	<-handle.done
 	C.lj_cancel_token_destroy((**C.LJCancelToken)(unsafe.Pointer(&handle.ptr)))
 	handle.ptr = nil
-}
-
-type ProbeInfo struct {
-	DurationNS    timeline.TimeNS
-	Audio         bool
-	AudioRate     int
-	AudioChannels int
-	Video         bool
-	VideoWidth    int
-	VideoHeight   int
-	VideoFPSNum   int
-	VideoFPSDen   int
-	AudioCodec    string
-	VideoCodec    string
 }
 
 func Probe(path string) (ProbeInfo, error) {
@@ -179,16 +167,6 @@ func (d *AudioDecoder) Close() {
 	}
 	d.cancel.close()
 	d.cancel = nil
-}
-
-type RenderOptions struct {
-	VideoCodec      string
-	VideoTag        string
-	VAAPIDevice     string
-	OutputMono      bool
-	RNNoiseEnabled  bool
-	RNNoiseStrength float64
-	RNNoiseModel    string
 }
 
 func Render(input, output string, source timeline.Timeline, options RenderOptions) error {
