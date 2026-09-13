@@ -22,6 +22,149 @@ func TestParseRenderFlags(t *testing.T) {
 	}
 }
 
+func TestParseRenderVideoCodecExplicitness(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		wantExplicit bool
+		wantCodec    config.VideoCodec
+	}{
+		{
+			name:         "no video-codec flag",
+			args:         []string{"input.mp4", "output.mp4"},
+			wantExplicit: false,
+			wantCodec:    config.VideoHEVC,
+		},
+		{
+			name:         "--video-codec h264",
+			args:         []string{"input.mp4", "output.mp4", "--video-codec", "h264"},
+			wantExplicit: true,
+			wantCodec:    config.VideoH264,
+		},
+		{
+			name:         "--video-codec=h264",
+			args:         []string{"input.mp4", "output.mp4", "--video-codec=h264"},
+			wantExplicit: true,
+			wantCodec:    config.VideoH264,
+		},
+		{
+			name:         "-video-codec h264",
+			args:         []string{"input.mp4", "output.mp4", "-video-codec", "h264"},
+			wantExplicit: true,
+			wantCodec:    config.VideoH264,
+		},
+		{
+			name:         "-video-codec=h264",
+			args:         []string{"input.mp4", "output.mp4", "-video-codec=h264"},
+			wantExplicit: true,
+			wantCodec:    config.VideoH264,
+		},
+		{
+			name:         "--video-codec hevc (explicit default)",
+			args:         []string{"input.mp4", "output.mp4", "--video-codec", "hevc"},
+			wantExplicit: true,
+			wantCodec:    config.VideoHEVC,
+		},
+		{
+			name:         "-video-codec hevc (explicit default)",
+			args:         []string{"input.mp4", "output.mp4", "-video-codec", "hevc"},
+			wantExplicit: true,
+			wantCodec:    config.VideoHEVC,
+		},
+		{
+			name:         "--video-codec=hevc (explicit default)",
+			args:         []string{"input.mp4", "output.mp4", "--video-codec=hevc"},
+			wantExplicit: true,
+			wantCodec:    config.VideoHEVC,
+		},
+		{
+			name:         "-video-codec=hevc (explicit default)",
+			args:         []string{"input.mp4", "output.mp4", "-video-codec=hevc"},
+			wantExplicit: true,
+			wantCodec:    config.VideoHEVC,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, _, explicit, err := parseRenderArgs(tc.args)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if explicit != tc.wantExplicit {
+				t.Fatalf("expected explicit=%v, got %v", tc.wantExplicit, explicit)
+			}
+			if cfg.VideoCodec != tc.wantCodec {
+				t.Fatalf("expected codec=%s, got %s", tc.wantCodec, cfg.VideoCodec)
+			}
+		})
+	}
+}
+
+func TestParseRenderCodecRegressionValueComparisonInsufficient(t *testing.T) {
+	// Demonstrates why comparing parsed value against default is insufficient:
+	// Default codec is HEVC. If a user explicitly supplies -video-codec hevc,
+	// the parsed value equals the default value, but explicit must still be true.
+	cfg, _, explicit, err := parseRenderArgs([]string{"input.mp4", "output.mp4", "-video-codec", "hevc"})
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	defaultCodec := config.Default().VideoCodec
+	if cfg.VideoCodec != defaultCodec {
+		t.Fatalf("expected parsed codec %q to match default %q", cfg.VideoCodec, defaultCodec)
+	}
+	if !explicit {
+		t.Fatalf("regression failure: explicitly supplied default codec must have explicit=true, got false")
+	}
+}
+
+func TestSelectVAAPIRegressionSingleDashExplicitCodecDoesNotFallback(t *testing.T) {
+	// End-to-end integration of parser + selection:
+	// Single-dash -video-codec hevc must mark explicit=true, which prevents
+	// silent fallback to H.264 when HEVC is unavailable.
+	cfg, _, explicit, err := parseRenderArgs([]string{
+		"input.mp4", "output.mp4",
+		"-video-codec", "hevc",
+		"--non-interactive",
+	})
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if !explicit {
+		t.Fatalf("expected -video-codec hevc to be explicit")
+	}
+
+	choices := []ui.VAAPIChoice{
+		{Codec: config.VideoH264, Device: "/dev/dri/renderD128"},
+	}
+	_, err = selectVAAPIConfig(cfg, choices, explicit, false, 1920, 1080)
+	if err == nil {
+		t.Fatal("expected error preventing fallback when explicit HEVC is unavailable")
+	}
+	if !strings.Contains(err.Error(), "selected hevc VAAPI encoder is unavailable") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+
+	// Contrast with no codec flag (implicit): fallback to H.264 must succeed.
+	cfgImplicit, _, explicitImplicit, err := parseRenderArgs([]string{
+		"input.mp4", "output.mp4",
+		"--non-interactive",
+	})
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if explicitImplicit {
+		t.Fatalf("expected no codec flag to have explicit=false")
+	}
+	resolved, err := selectVAAPIConfig(cfgImplicit, choices, explicitImplicit, false, 1920, 1080)
+	if err != nil {
+		t.Fatalf("expected implicit codec to fall back to H.264: %v", err)
+	}
+	if resolved.VideoCodec != config.VideoH264 {
+		t.Fatalf("expected fallback to %s, got %s", config.VideoH264, resolved.VideoCodec)
+	}
+}
+
 func TestParseRejectsConflictingAndInvalidFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"input.mp4", "output.mp4", "--mono", "--stereo"},

@@ -200,12 +200,11 @@ func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
 	}
 	interactive := !*nonInteractive && isTerminal(os.Stdin)
 	codecExplicit := false
-	for _, arg := range args[2:] {
-		if arg == "--video-codec" || strings.HasPrefix(arg, "--video-codec=") {
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "video-codec" {
 			codecExplicit = true
-			break
 		}
-	}
+	})
 	return cfg, interactive, codecExplicit, nil
 }
 
