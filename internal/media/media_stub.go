@@ -35,14 +35,6 @@ func OpenAudioWithContext(ctx context.Context, path string, channels int, rnnois
 	return nil, errUnsupported
 }
 
-func Render(input, output string, source timeline.Timeline, options RenderOptions) error {
-	return errUnsupported
-}
-
-func RenderWithProgress(input, output string, source timeline.Timeline, options RenderOptions, progress func(int)) error {
-	return errUnsupported
-}
-
 func RenderWithProgressContext(ctx context.Context, input, output string, source timeline.Timeline, options RenderOptions, progress func(int)) error {
 	return errUnsupported
 }

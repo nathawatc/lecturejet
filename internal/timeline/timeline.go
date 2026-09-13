@@ -151,36 +151,6 @@ func (t Timeline) Lookup(source TimeNS) (Segment, int, bool) {
 	return t.segments[i], i, true
 }
 
-type Cursor struct {
-	timeline *Timeline
-	index    int
-}
-
-func (t *Timeline) Cursor() *Cursor { return &Cursor{timeline: t} }
-
-func (c *Cursor) Lookup(source TimeNS) (Segment, int, bool) {
-	if c == nil || c.timeline == nil || source < 0 || source >= c.timeline.end {
-		return Segment{}, -1, false
-	}
-	segments := c.timeline.segments
-	if c.index >= len(segments) {
-		c.index = len(segments) - 1
-	}
-	if c.index < 0 {
-		c.index = 0
-	}
-	for c.index > 0 && source < segments[c.index].Start {
-		c.index--
-	}
-	for c.index+1 < len(segments) && source >= segments[c.index].End {
-		c.index++
-	}
-	if source < segments[c.index].Start || source >= segments[c.index].End {
-		return c.timeline.Lookup(source)
-	}
-	return segments[c.index], c.index, true
-}
-
 func (t Timeline) MapSourceToOutput(source TimeNS) TimeNS {
 	if source <= 0 {
 		return 0
@@ -197,23 +167,6 @@ func (t Timeline) MapSourceToOutput(source TimeNS) TimeNS {
 		return outputStart
 	}
 	return outputStart + source - segment.Start
-}
-
-func (t Timeline) MapSourceInterval(start, end TimeNS) (TimeNS, TimeNS, bool) {
-	if end <= start {
-		return 0, 0, false
-	}
-	start = maxTime(0, minTime(t.end, start))
-	end = maxTime(0, minTime(t.end, end))
-	if end <= start {
-		return 0, 0, false
-	}
-	segment, _, ok := t.Lookup(start)
-	if !ok || segment.Action != Keep {
-		return 0, 0, false
-	}
-	segmentEnd := minTime(end, segment.End)
-	return t.MapSourceToOutput(start), t.MapSourceToOutput(segmentEnd), true
 }
 
 func keptDuration(segment Segment) TimeNS {
@@ -239,16 +192,6 @@ func SampleIndexAtOrAfter(ns TimeNS, sampleRate int) int64 {
 		result++
 	}
 	return result
-}
-
-func SampleIndexAtOrBefore(ns TimeNS, sampleRate int) int64 {
-	if ns <= 0 || sampleRate <= 0 {
-		return 0
-	}
-	if int64(ns) > math.MaxInt64/int64(sampleRate) {
-		return math.MaxInt64
-	}
-	return int64(ns) * int64(sampleRate) / 1_000_000_000
 }
 
 func TimeForSamples(samples int64, sampleRate int) TimeNS {

@@ -26,8 +26,7 @@ func benchmarkTimeline(b *testing.B) Timeline {
 
 func BenchmarkTimelineLookup(b *testing.B) {
 	value := benchmarkTimeline(b)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		_, index, ok := value.Lookup(TimeNS((i % 20_001) * 1_000_000))
 		if ok {
 			benchmarkSinkIndex += int64(index)
@@ -37,15 +36,13 @@ func BenchmarkTimelineLookup(b *testing.B) {
 
 func BenchmarkTimelineSourceOutputMapping(b *testing.B) {
 	value := benchmarkTimeline(b)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		benchmarkSinkTime = value.MapSourceToOutput(TimeNS((i % 20_001) * 1_000_000))
 	}
 }
 
 func BenchmarkSampleBoundaryMapping(b *testing.B) {
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		benchmarkSinkIndex = SampleIndexAtOrAfter(TimeNS(i%1_000_000_000), 48_000)
 	}
 }

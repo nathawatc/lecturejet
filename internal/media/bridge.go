@@ -75,17 +75,12 @@ func Probe(path string) (ProbeInfo, error) {
 		return ProbeInfo{}, fmt.Errorf("%s", cString(errorText))
 	}
 	return ProbeInfo{
-		DurationNS:    timeline.TimeNS(cInfo.duration_ns),
-		Audio:         cInfo.audio_stream >= 0,
-		AudioRate:     int(cInfo.audio_sample_rate),
-		AudioChannels: int(cInfo.audio_channels),
-		Video:         cInfo.video_stream >= 0,
-		VideoWidth:    int(cInfo.video_width),
-		VideoHeight:   int(cInfo.video_height),
-		VideoFPSNum:   int(cInfo.video_fps_num),
-		VideoFPSDen:   int(cInfo.video_fps_den),
-		AudioCodec:    C.GoString(&cInfo.audio_codec[0]),
-		VideoCodec:    C.GoString(&cInfo.video_codec[0]),
+		DurationNS:  timeline.TimeNS(cInfo.duration_ns),
+		Audio:       cInfo.audio_stream >= 0,
+		Video:       cInfo.video_stream >= 0,
+		VideoWidth:  int(cInfo.video_width),
+		VideoHeight: int(cInfo.video_height),
+		VideoCodec:  C.GoString(&cInfo.video_codec[0]),
 	}, nil
 }
 
@@ -170,15 +165,6 @@ func (d *AudioDecoder) Close() {
 	}
 	d.cancel.close()
 	d.cancel = nil
-}
-
-func Render(input, output string, source timeline.Timeline, options RenderOptions) error {
-	return renderWithProgressContext(context.TODO(), input, output, source, options, nil)
-}
-
-func RenderWithProgress(input, output string, source timeline.Timeline, options RenderOptions,
-	progress func(int)) error {
-	return renderWithProgressContext(context.TODO(), input, output, source, options, progress)
 }
 
 func RenderWithProgressContext(ctx context.Context, input, output string, source timeline.Timeline,

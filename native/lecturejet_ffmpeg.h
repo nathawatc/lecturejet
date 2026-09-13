@@ -7,14 +7,9 @@
 typedef struct LJProbeInfo {
     int64_t duration_ns;
     int audio_stream;
-    int audio_sample_rate;
-    int audio_channels;
     int video_stream;
     int video_width;
     int video_height;
-    int video_fps_num;
-    int video_fps_den;
-    char audio_codec[64];
     char video_codec[64];
 } LJProbeInfo;
 

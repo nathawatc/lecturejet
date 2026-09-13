@@ -1,4 +1,11 @@
+#if defined(__has_include)
+#if __has_include("_cgo_export.h")
 #include "_cgo_export.h"
+#endif
+#endif
+
+extern void lecturejetProgress(int percent);
+
 #include "../../native/lecturejet_ffmpeg.c"
 
 static void lj_go_progress(int percent)

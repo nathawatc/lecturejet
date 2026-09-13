@@ -3,17 +3,12 @@ package media
 import "lecturejet/internal/timeline"
 
 type ProbeInfo struct {
-	DurationNS    timeline.TimeNS
-	Audio         bool
-	AudioRate     int
-	AudioChannels int
-	Video         bool
-	VideoWidth    int
-	VideoHeight   int
-	VideoFPSNum   int
-	VideoFPSDen   int
-	AudioCodec    string
-	VideoCodec    string
+	DurationNS  timeline.TimeNS
+	Audio       bool
+	Video       bool
+	VideoWidth  int
+	VideoHeight int
+	VideoCodec  string
 }
 
 type RenderOptions struct {

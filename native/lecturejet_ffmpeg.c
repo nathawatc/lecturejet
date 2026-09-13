@@ -166,23 +166,10 @@ int lj_probe_file(const char *path, LJProbeInfo *info, char *error, size_t error
         AVStream *stream = format->streams[info->video_stream];
         info->video_width = stream->codecpar->width;
         info->video_height = stream->codecpar->height;
-        AVRational fps = av_guess_frame_rate(format, stream, NULL);
-        info->video_fps_num = fps.num;
-        info->video_fps_den = fps.den;
         snprintf(info->video_codec, sizeof(info->video_codec), "%s",
                  decoder && decoder->name ? decoder->name : "unknown");
     }
-    decoder = NULL;
-    info->audio_stream = av_find_best_stream(format, AVMEDIA_TYPE_AUDIO, -1, -1, &decoder, 0);
-    if (info->audio_stream >= 0) {
-        const AVStream *stream = format->streams[info->audio_stream];
-        info->audio_sample_rate = stream->codecpar->sample_rate;
-        info->audio_channels = stream->codecpar->ch_layout.nb_channels;
-        if (info->audio_channels <= 0)
-            info->audio_channels = 1;
-        snprintf(info->audio_codec, sizeof(info->audio_codec), "%s",
-                 decoder && decoder->name ? decoder->name : "unknown");
-    }
+    info->audio_stream = av_find_best_stream(format, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
     if (info->video_stream < 0 && info->audio_stream < 0) {
         lj_error(error, error_size, "input contains no audio or video stream");
         avformat_close_input(&format);

@@ -36,7 +36,7 @@ func TestNewRejectsBadCoverageAndDuration(t *testing.T) {
 	}
 }
 
-func TestMappingLookupAndCursor(t *testing.T) {
+func TestMappingLookup(t *testing.T) {
 	timeline, err := New(100, []Segment{{0, 20, Keep}, {20, 50, Cut}, {50, 100, Keep}})
 	if err != nil {
 		t.Fatal(err)
@@ -50,12 +50,10 @@ func TestMappingLookupAndCursor(t *testing.T) {
 			t.Errorf("MapSourceToOutput(%d)=%d, want %d", test.source, got, test.output)
 		}
 	}
-	cursor := timeline.Cursor()
 	for source := TimeNS(0); source < 100; source++ {
 		fromBinary, bi, ok := timeline.Lookup(source)
-		fromCursor, ci, cok := cursor.Lookup(source)
-		if !ok || !cok || fromBinary != fromCursor || bi != ci {
-			t.Fatalf("lookup mismatch at %d: binary=%v/%d/%v cursor=%v/%d/%v", source, fromBinary, bi, ok, fromCursor, ci, cok)
+		if !ok || bi < 0 || bi >= len(timeline.Segments()) {
+			t.Fatalf("lookup failed at %d: binary=%v/%d/%v", source, fromBinary, bi, ok)
 		}
 	}
 }
@@ -64,33 +62,8 @@ func TestSampleBoundaryConversions(t *testing.T) {
 	if got := SampleIndexAtOrAfter(20_833_334, 48_000); got != 1001 {
 		t.Fatalf("ceil sample index=%d", got)
 	}
-	if got := SampleIndexAtOrBefore(20_833_334, 48_000); got != 1000 {
-		t.Fatalf("floor sample index=%d", got)
-	}
 	if got := TimeForSamples(48_000, 48_000); got != 1_000_000_000 {
 		t.Fatalf("sample time=%d", got)
-	}
-}
-
-func TestLongAlternatingTimelineLookup(t *testing.T) {
-	const count = 10_001
-	segments := make([]Segment, count)
-	for i := range segments {
-		segments[i] = Segment{Start: TimeNS(i), End: TimeNS(i + 1), Action: Keep}
-		if i%2 == 1 {
-			segments[i].Action = Cut
-		}
-	}
-	value, err := New(count, segments)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cursor := value.Cursor()
-	for i := TimeNS(0); i < count; i++ {
-		_, index, ok := cursor.Lookup(i)
-		if !ok || index != int(i) {
-			t.Fatalf("lookup %d=%d/%v", i, index, ok)
-		}
 	}
 }
 
@@ -159,10 +132,9 @@ func FuzzSampleBoundary(f *testing.F) {
 		if nanoseconds < 0 || sampleRate <= 0 || sampleRate > 1_000_000 {
 			return
 		}
-		atOrBefore := SampleIndexAtOrBefore(TimeNS(nanoseconds), sampleRate)
 		atOrAfter := SampleIndexAtOrAfter(TimeNS(nanoseconds), sampleRate)
-		if atOrBefore < 0 || atOrAfter < atOrBefore {
-			t.Fatalf("invalid boundary conversion: before=%d after=%d", atOrBefore, atOrAfter)
+		if atOrAfter < 0 {
+			t.Fatalf("invalid boundary conversion: after=%d", atOrAfter)
 		}
 	})
 }

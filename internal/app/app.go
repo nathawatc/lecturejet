@@ -17,16 +17,13 @@ import (
 )
 
 type Result struct {
-	Timeline     timeline.Timeline
-	Duration     timeline.TimeNS
-	Kept         timeline.TimeNS
-	Removed      timeline.TimeNS
-	Cuts         int
-	Reduction    float64
-	AudioSamples int64
-	WorkerCount  int
-	VAAPIDevice  string
-	VideoCodec   config.VideoCodec
+	Timeline    timeline.Timeline
+	Duration    timeline.TimeNS
+	Kept        timeline.TimeNS
+	Removed     timeline.TimeNS
+	Cuts        int
+	Reduction   float64
+	VAAPIDevice string
 }
 
 func ProbeVAAPIChoices(info media.ProbeInfo, preferred config.VideoCodec, requestedDevice string) []ui.VAAPIChoice {
@@ -194,8 +191,7 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 	}
 	return Result{Timeline: resultTimeline, Duration: sourceDuration, Kept: kept,
 		Removed: removed, Cuts: resultTimeline.Cuts(), Reduction: reduction,
-		AudioSamples: audioSamples, WorkerCount: analyze.WorkerCount(cfg.Threads),
-		VAAPIDevice: cfg.VAAPIDevice, VideoCodec: cfg.VideoCodec}, nil
+		VAAPIDevice: cfg.VAAPIDevice}, nil
 }
 
 func Render(ctx context.Context, cfg config.Config, result Result, status io.Writer) error {

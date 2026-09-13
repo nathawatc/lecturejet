@@ -50,9 +50,6 @@ func TestAnalyzeSyntheticFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Analyze failed: %v", err)
 	}
-	if result.AudioSamples <= 0 {
-		t.Fatalf("Analyze produced %d audio samples, want > 0", result.AudioSamples)
-	}
 	if result.Duration <= 0 {
 		t.Fatalf("Analyze produced invalid duration %v", result.Duration)
 	}
@@ -99,8 +96,7 @@ func TestRenderCancellationRemovesTemporaryOutput(t *testing.T) {
 	cfg.VideoCodec = config.VideoH264
 	cfg.Audio.Mono = true
 	ctx, cancel := context.WithCancel(context.Background())
-	err = Render(ctx, cfg, Result{Timeline: resultTimeline, VAAPIDevice: device,
-		VideoCodec: config.VideoH264}, cancelOnRenderProgress{cancel: cancel})
+	err = Render(ctx, cfg, Result{Timeline: resultTimeline, VAAPIDevice: device}, cancelOnRenderProgress{cancel: cancel})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Render error=%v, want context cancellation", err)
 	}
