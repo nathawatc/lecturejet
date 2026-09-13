@@ -6,7 +6,7 @@ all: build
 
 build:
 	mkdir -p build
-	CGO_ENABLED=1 go build -a -o $(BIN) ./cmd/lecturejet
+	CGO_ENABLED=1 go build -o $(BIN) ./cmd/lecturejet
 
 test:
 	go test ./...

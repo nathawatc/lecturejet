@@ -3,7 +3,7 @@ package app
 import (
 	"fmt"
 
-	"lecturejet/internal/analyze"
+	"codeberg.org/nathawat/lecturejet/internal/analyze"
 )
 
 // pcmBlockSplitter slices an incoming stream of decoded PCM samples into

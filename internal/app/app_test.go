@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"lecturejet/internal/config"
-	"lecturejet/internal/media"
-	"lecturejet/internal/timeline"
+	"codeberg.org/nathawat/lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/media"
+	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
 
 func TestAnalyzeCancellationWaitsForDecoder(t *testing.T) {

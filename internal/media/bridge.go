@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"unsafe"
 
-	"lecturejet/internal/timeline"
+	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
 
 const errorBufferSize = 1024

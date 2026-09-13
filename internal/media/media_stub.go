@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 
-	"lecturejet/internal/timeline"
+	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
 
 var errUnsupported = errors.New("media operations require Linux with cgo and VAAPI")

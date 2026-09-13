@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/config"
 )
 
 func TestPreflightExistingDestination(t *testing.T) {

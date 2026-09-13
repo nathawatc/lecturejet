@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"lecturejet/internal/config"
-	"lecturejet/internal/ui"
+	"codeberg.org/nathawat/lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/ui"
 )
 
 func TestParseRenderFlags(t *testing.T) {

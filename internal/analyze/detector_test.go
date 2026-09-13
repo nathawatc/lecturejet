@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"lecturejet/internal/timeline"
+	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
 
 func TestDetectorPreservesShortSilenceAndCutsLongSilence(t *testing.T) {

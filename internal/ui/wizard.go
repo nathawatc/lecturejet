@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/config"
 )
 
 type VAAPIChoice struct {

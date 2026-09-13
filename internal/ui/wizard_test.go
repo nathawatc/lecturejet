@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/config"
 )
 
 func TestInteractiveChoicesResolveExpectedConfig(t *testing.T) {

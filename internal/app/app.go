@@ -9,11 +9,11 @@ import (
 	"sort"
 	"strings"
 
-	"lecturejet/internal/analyze"
-	"lecturejet/internal/config"
-	"lecturejet/internal/media"
-	"lecturejet/internal/timeline"
-	"lecturejet/internal/ui"
+	"codeberg.org/nathawat/lecturejet/internal/analyze"
+	"codeberg.org/nathawat/lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/media"
+	"codeberg.org/nathawat/lecturejet/internal/timeline"
+	"codeberg.org/nathawat/lecturejet/internal/ui"
 )
 
 type Result struct {

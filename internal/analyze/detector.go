@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math"
 
-	"lecturejet/internal/timeline"
+	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
 
 type SilenceConfig struct {

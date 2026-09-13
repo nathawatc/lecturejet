@@ -12,10 +12,10 @@ import (
 	"strconv"
 	"strings"
 
-	"lecturejet/internal/app"
-	"lecturejet/internal/config"
-	"lecturejet/internal/media"
-	"lecturejet/internal/ui"
+	"codeberg.org/nathawat/lecturejet/internal/app"
+	"codeberg.org/nathawat/lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/media"
+	"codeberg.org/nathawat/lecturejet/internal/ui"
 )
 
 var versionOverride string

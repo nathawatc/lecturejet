@@ -1,6 +1,6 @@
 package media
 
-import "lecturejet/internal/timeline"
+import "codeberg.org/nathawat/lecturejet/internal/timeline"
 
 type ProbeInfo struct {
 	DurationNS  timeline.TimeNS

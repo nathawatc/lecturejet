@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/config"
 )
 
 // Preflight validates filesystem-dependent properties of cfg before expensive probing and media processing.

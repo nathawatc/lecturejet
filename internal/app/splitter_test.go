@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"lecturejet/internal/analyze"
+	"codeberg.org/nathawat/lecturejet/internal/analyze"
 )
 
 func verifyBlocks(t *testing.T, blocks []analyze.PCMBlock, original []float32, blockSize int, expectedStart int64) {
