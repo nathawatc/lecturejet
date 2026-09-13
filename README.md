@@ -41,6 +41,12 @@ Binary: `build/lecturejet`.
 
 ## Usage
 
+```bash
+lecturejet --help
+lecturejet analyze --help
+lecturejet --version
+```
+
 Basic invocation opens wizard in terminal:
 
 ```bash

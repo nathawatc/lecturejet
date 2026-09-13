@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -294,8 +293,4 @@ func FormatDuration(value timeline.TimeNS) string {
 	minutes := totalMinutes % 60
 	hours := totalMinutes / 60
 	return fmt.Sprintf("%02d:%02d:%02d.%03d", hours, minutes, seconds, ms)
-}
-
-func RuntimeSummary() string {
-	return fmt.Sprintf("Go %s, %d logical CPUs", runtime.Version(), runtime.NumCPU())
 }

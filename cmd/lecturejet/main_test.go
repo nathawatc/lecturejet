@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"flag"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -481,5 +484,275 @@ func TestSelectVAAPIRegressionDevicePopulatedFallback(t *testing.T) {
 	}
 	if resolved.VAAPIDevice != "/dev/dri/renderD128" {
 		t.Fatalf("expected VAAPIDevice to remain %q, got %q", "/dev/dri/renderD128", resolved.VAAPIDevice)
+	}
+}
+
+func TestTopLevelHelp(t *testing.T) {
+	for _, flagName := range []string{"--help", "-h"} {
+		t.Run(flagName, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			err := run([]string{flagName}, nil, &stdout, &stderr)
+			if err != nil {
+				t.Fatalf("expected nil error for %s, got: %v", flagName, err)
+			}
+			out := stdout.String()
+			if !strings.Contains(out, "Usage:") {
+				t.Fatalf("expected Usage: in stdout, got:\n%s", out)
+			}
+			if !strings.Contains(out, "lecturejet <input.mp4> <output.mp4> [options]") {
+				t.Fatalf("expected render invocation in stdout, got:\n%s", out)
+			}
+			if !strings.Contains(out, "analyze") {
+				t.Fatalf("expected mention of analyze in stdout, got:\n%s", out)
+			}
+			// Must expose render flags from FlagSet
+			for _, expectedFlag := range []string{
+				"-force",
+				"-threads",
+				"-video-codec",
+				"-hevc-tag",
+				"-vaapi-device",
+				"-rnnoise",
+				"-rnnoise-model",
+				"-rnnoise-strength",
+				"-mono",
+				"-stereo",
+				"-non-interactive",
+				"-threshold",
+				"-min-silence",
+				"-margin",
+			} {
+				if !strings.Contains(out, expectedFlag) {
+					t.Errorf("expected %s in render help, got:\n%s", expectedFlag, out)
+				}
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("expected empty stderr, got: %s", stderr.String())
+			}
+		})
+	}
+}
+
+func TestAnalyzeHelp(t *testing.T) {
+	for _, flagName := range []string{"--help", "-h"} {
+		t.Run(flagName, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			err := run([]string{"analyze", flagName}, nil, &stdout, &stderr)
+			if err != nil {
+				t.Fatalf("expected nil error for analyze %s, got: %v", flagName, err)
+			}
+			out := stdout.String()
+			if !strings.Contains(out, "Usage:") {
+				t.Fatalf("expected Usage: in stdout, got:\n%s", out)
+			}
+			if !strings.Contains(out, "lecturejet analyze <input.mp4> [options]") {
+				t.Fatalf("expected analyze invocation in stdout, got:\n%s", out)
+			}
+			for _, expectedFlag := range []string{
+				"-threads",
+				"-rnnoise",
+				"-rnnoise-model",
+				"-rnnoise-strength",
+				"-threshold",
+				"-min-silence",
+				"-margin",
+			} {
+				if !strings.Contains(out, expectedFlag) {
+					t.Errorf("expected %s in analyze help, got:\n%s", expectedFlag, out)
+				}
+			}
+			// Must NOT contain render-only flags
+			for _, forbiddenFlag := range []string{
+				"-force",
+				"-video-codec",
+				"-hevc-tag",
+				"-vaapi-device",
+				"-mono",
+				"-stereo",
+				"-non-interactive",
+			} {
+				if strings.Contains(out, forbiddenFlag) {
+					t.Errorf("did not expect render-only flag %s in analyze help, got:\n%s", forbiddenFlag, out)
+				}
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("expected empty stderr, got: %s", stderr.String())
+			}
+		})
+	}
+}
+
+func TestHelpBeforeExpensiveWork(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	// Intentional nonexistent paths: help commands must not probe or preflight
+	err := run([]string{"--help"}, nil, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	err = run([]string{"analyze", "--help"}, nil, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+}
+
+func TestParserHelp(t *testing.T) {
+	t.Run("render parser help with positional args", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		err := run([]string{"nonexistent-input.mp4", "nonexistent-output.mp4", "--help"}, nil, &stdout, &stderr)
+		if err != nil {
+			t.Fatalf("expected nil error, got: %v", err)
+		}
+		out := stdout.String()
+		if !strings.Contains(out, "Usage:") || !strings.Contains(out, "-force") {
+			t.Fatalf("expected render help in stdout, got:\n%s", out)
+		}
+	})
+
+	t.Run("analyze parser help with positional args", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		err := run([]string{"analyze", "nonexistent-input.mp4", "--help"}, nil, &stdout, &stderr)
+		if err != nil {
+			t.Fatalf("expected nil error, got: %v", err)
+		}
+		out := stdout.String()
+		if !strings.Contains(out, "Usage:") || !strings.Contains(out, "-threshold") || strings.Contains(out, "-force") {
+			t.Fatalf("expected analyze help in stdout, got:\n%s", out)
+		}
+	})
+}
+
+func TestVersion(t *testing.T) {
+	for _, flagName := range []string{"--version", "-version"} {
+		t.Run(flagName, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			err := run([]string{flagName}, nil, &stdout, &stderr)
+			if err != nil {
+				t.Fatalf("expected nil error for %s, got: %v", flagName, err)
+			}
+			out := stdout.String()
+			if !strings.HasPrefix(out, "lecturejet ") {
+				t.Fatalf("expected stdout starting with 'lecturejet ', got:\n%s", out)
+			}
+			if !strings.HasSuffix(out, "\n") {
+				t.Fatalf("expected newline termination, got: %q", out)
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("expected empty stderr, got: %s", stderr.String())
+			}
+		})
+	}
+}
+
+func TestVersionFormatters(t *testing.T) {
+	formatTests := []struct {
+		input string
+		want  string
+	}{
+		{"v0.1.0", "0.1.0"},
+		{"0.1.0", "0.1.0"},
+		{"v1.2.3-rc.1", "1.2.3-rc.1"},
+		{"(devel)", "dev"},
+		{"", "dev"},
+		{"   v0.1.0\n", "0.1.0"},
+	}
+	for _, tc := range formatTests {
+		if got := formatVersion(tc.input); got != tc.want {
+			t.Errorf("formatVersion(%q) = %q; want %q", tc.input, got, tc.want)
+		}
+	}
+
+	if got := versionFromBuildInfo(nil); got != "dev" {
+		t.Errorf("versionFromBuildInfo(nil) = %q; want %q", got, "dev")
+	}
+
+	infoDevel := &debug.BuildInfo{
+		Main: debug.Module{Version: "(devel)"},
+	}
+	if got := versionFromBuildInfo(infoDevel); got != "dev" {
+		t.Errorf("versionFromBuildInfo(devel) = %q; want %q", got, "dev")
+	}
+
+	infoTagged := &debug.BuildInfo{
+		Main: debug.Module{Version: "v0.1.0"},
+	}
+	if got := versionFromBuildInfo(infoTagged); got != "0.1.0" {
+		t.Errorf("versionFromBuildInfo(v0.1.0) = %q; want %q", got, "0.1.0")
+	}
+
+	origOverride := versionOverride
+	defer func() { versionOverride = origOverride }()
+	versionOverride = "v0.2.0"
+	if got := currentVersion(); got != "0.2.0" {
+		t.Errorf("currentVersion() with override = %q; want %q", got, "0.2.0")
+	}
+}
+
+func TestInvalidCommandBehavior(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "empty args",
+			args:    []string{},
+			wantErr: "usage: lecturejet input.mp4 output.mp4",
+		},
+		{
+			name:    "analyze missing input",
+			args:    []string{"analyze"},
+			wantErr: "usage: lecturejet analyze input.mp4",
+		},
+		{
+			name:    "render missing output",
+			args:    []string{"input.mp4"},
+			wantErr: "usage: lecturejet input.mp4 output.mp4",
+		},
+		{
+			name:    "analyze unknown flag",
+			args:    []string{"analyze", "input.mp4", "--unknown-flag"},
+			wantErr: "flag provided but not defined",
+		},
+		{
+			name:    "render unknown flag",
+			args:    []string{"input.mp4", "output.mp4", "--unknown-flag"},
+			wantErr: "flag provided but not defined",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			err := run(tc.args, nil, &stdout, &stderr)
+			if err == nil {
+				t.Fatalf("expected error for args %v, got nil", tc.args)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected error containing %q, got: %v", tc.wantErr, err)
+			}
+			// Help requested must NOT be surfaced as error
+			if strings.Contains(err.Error(), "flag: help requested") {
+				t.Fatalf("surfaced 'flag: help requested' as error: %v", err)
+			}
+		})
+	}
+}
+
+func TestFlagErrHelpHandling(t *testing.T) {
+	_, _, _, err := parseRenderArgs([]string{"input.mp4", "output.mp4", "--help"})
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("expected flag.ErrHelp from parseRenderArgs, got: %v", err)
+	}
+
+	_, err = parseAnalyzeArgs([]string{"input.mp4", "--help"})
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("expected flag.ErrHelp from parseAnalyzeArgs, got: %v", err)
+	}
+
+	_, err = parseAnalyzeArgs([]string{"--help"})
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("expected flag.ErrHelp from parseAnalyzeArgs(--help), got: %v", err)
 	}
 }
