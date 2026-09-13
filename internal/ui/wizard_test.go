@@ -57,3 +57,20 @@ func TestInteractiveHEVCCodecTagChoice(t *testing.T) {
 		t.Fatalf("unexpected HEVC codec tag: %q", resolved.HEVCCodecTag)
 	}
 }
+
+func TestInteractiveRNNoiseWithStereoYieldsInvalidConfig(t *testing.T) {
+	cfg := config.Default()
+	cfg.Input = "in.mp4"
+	cfg.Output = "out.mp4"
+	resolved, err := Configure(strings.NewReader("1\n1\ny\n\nmodel.rnnn\nn\n"), &strings.Builder{}, cfg,
+		[]VAAPIChoice{{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"}})
+	if err != nil {
+		t.Fatalf("unexpected wizard error: %v", err)
+	}
+	if !resolved.Noise.Enabled || resolved.Audio.Mono {
+		t.Fatalf("expected RNNoise enabled and stereo output, got %+v", resolved)
+	}
+	if err := resolved.Validate(); err == nil {
+		t.Fatal("expected invalid config for RNNoise + stereo, got valid config")
+	}
+}

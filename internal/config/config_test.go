@@ -41,3 +41,33 @@ func TestValidation(t *testing.T) {
 		t.Fatalf("valid HEVC tag and zero strength rejected: %v", err)
 	}
 }
+
+func TestNoiseChannelValidationMatrix(t *testing.T) {
+	cases := []struct {
+		name         string
+		noiseEnabled bool
+		mono         bool
+		wantErr      bool
+	}{
+		{name: "rnnoise off + mono", noiseEnabled: false, mono: true, wantErr: false},
+		{name: "rnnoise off + stereo", noiseEnabled: false, mono: false, wantErr: false},
+		{name: "rnnoise on + mono", noiseEnabled: true, mono: true, wantErr: false},
+		{name: "rnnoise on + stereo", noiseEnabled: true, mono: false, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.Input = "in.mp4"
+			cfg.Output = "out.mp4"
+			cfg.Noise.Enabled = tc.noiseEnabled
+			cfg.Audio.Mono = tc.mono
+			err := cfg.Validate()
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected validation error for %s, got nil", tc.name)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected validation error for %s: %v", tc.name, err)
+			}
+		})
+	}
+}

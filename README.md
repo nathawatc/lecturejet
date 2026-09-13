@@ -59,9 +59,9 @@ lecturejet lecture.mp4 output.mp4 \
   --mono --threads auto --non-interactive
 ```
 
-`--stereo` produces two-channel output. `--mono` default. Codec values:
-`hevc`, `h264`. HEVC tags: `--hevc-tag hev1` (default) or `hvc1` for Apple
-compatibility.
+`--stereo` produces two-channel output (incompatible with `--rnnoise`). `--mono`
+default. Codec values: `hevc`, `h264`. HEVC tags: `--hevc-tag hev1` (default) or
+`hvc1` for Apple compatibility.
 
 Analysis-only mode:
 
@@ -82,7 +82,8 @@ PCM; memory stays bounded regardless of lecture duration.
 
 ## RNNoise
 
-Optional RNNoise uses FFmpeg's public `arnndn` filter. Provide compatible `.rnnn`
+Optional RNNoise uses FFmpeg's public `arnndn` filter. RNNoise currently
+requires mono output. Use `--mono` with `--rnnoise`. Provide compatible `.rnnn`
 model with `--rnnoise-model`; no model bundled. Strength is 0–100 and maps to
 filter mix; 80 is lecture default, with 75–100 suitable for strong lecture
 denoising. Missing model or unavailable filter is an

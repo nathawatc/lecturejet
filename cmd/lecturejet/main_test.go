@@ -37,3 +37,22 @@ func TestParseAnalyzeRejectsObsoleteHysteresisFlag(t *testing.T) {
 		t.Fatal("accepted obsolete --hysteresis flag in analyze")
 	}
 }
+
+func TestParseRNNoiseStereoReachesValidationAndIsRejected(t *testing.T) {
+	cfg, _, _, err := parseRenderArgs([]string{
+		"input.mp4", "output.mp4",
+		"--rnnoise",
+		"--rnnoise-model", "model.rnnn",
+		"--stereo",
+		"--non-interactive",
+	})
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if !cfg.Noise.Enabled || cfg.Audio.Mono {
+		t.Fatalf("expected rnnoise enabled and stereo output, got %+v", cfg)
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected RNNoise + stereo configuration to be rejected by validation")
+	}
+}

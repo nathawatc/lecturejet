@@ -84,6 +84,9 @@ func (c Config) Validate() error {
 	if c.Noise.Strength < 0 || c.Noise.Strength > 100 {
 		return fmt.Errorf("rnnoise strength must be between 0 and 100")
 	}
+	if c.Noise.Enabled && !c.Audio.Mono {
+		return fmt.Errorf("rnnoise requires mono output: stereo output cannot currently be combined with rnnoise")
+	}
 	if c.Silence.WindowMS < 1 {
 		return fmt.Errorf("silence window must be at least 1 ms")
 	}

@@ -88,7 +88,11 @@ func Configure(in io.Reader, out io.Writer, cfg config.Config, choices []VAAPICh
 		cfg.Noise.Enabled = false
 	}
 
-	mono, err := readLine(reader, out, "Convert output audio to mono? [Y/n] ")
+	prompt := "Convert output audio to mono? [Y/n] "
+	if cfg.Noise.Enabled {
+		prompt = "Convert output audio to mono? (RNNoise requires mono) [Y/n] "
+	}
+	mono, err := readLine(reader, out, prompt)
 	if err != nil {
 		return config.Config{}, err
 	}
