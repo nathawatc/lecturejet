@@ -27,18 +27,14 @@ func ProbeVAAPI(device, codec string, width, height int) error {
 	return errUnsupported
 }
 
-func OpenAudio(path string, channels int, rnnoise bool, strength float64, model string) (*AudioDecoder, error) {
+func OpenAudio(ctx context.Context, path string, channels int, rnnoise bool, strength float64, model string) (*AudioDecoder, error) {
 	return nil, errUnsupported
 }
 
-func OpenAudioWithContext(ctx context.Context, path string, channels int, rnnoise bool, strength float64, model string) (*AudioDecoder, error) {
-	return nil, errUnsupported
-}
-
-func RenderWithProgressContext(ctx context.Context, input, output string, source timeline.Timeline, options RenderOptions, progress func(int)) error {
+func Render(ctx context.Context, input, output string, source timeline.Timeline, options RenderOptions, progress func(int)) error {
 	return errUnsupported
 }
 
-func RemuxHEVCHVC1WithContext(ctx context.Context, input, output string) error {
+func RemuxHEVCHVC1(ctx context.Context, input, output string) error {
 	return errUnsupported
 }

@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"codeberg.org/nathawat/lecturejet/internal/config"
 )
 
 func TestInvalidRNNoiseConfigurationFailsClearly(t *testing.T) {
-	if _, err := OpenAudio("not-used", 1, true, 0.2, ""); err == nil {
+	if _, err := OpenAudio(context.Background(), "not-used", 1, true, 0.2, ""); err == nil {
 		t.Fatal("missing RNNoise model accepted")
 	}
 }
@@ -21,7 +23,7 @@ func TestInvalidRNNoiseConfigurationFailsClearly(t *testing.T) {
 func TestRemuxCancellationReturnsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := RemuxHEVCHVC1WithContext(ctx, "not-used", filepath.Join(t.TempDir(), "output.mp4")); !errors.Is(err, context.Canceled) {
+	if err := RemuxHEVCHVC1(ctx, "not-used", filepath.Join(t.TempDir(), "output.mp4")); !errors.Is(err, context.Canceled) {
 		t.Fatalf("remux error=%v, want context cancellation", err)
 	}
 }
@@ -42,7 +44,7 @@ func TestRemuxRejectsNonHEVCFixture(t *testing.T) {
 	if strings.Contains(info.VideoCodec, "hevc") {
 		t.Skip("fixture contains HEVC")
 	}
-	err = RemuxHEVCHVC1WithContext(context.Background(), path,
+	err = RemuxHEVCHVC1(context.Background(), path,
 		filepath.Join(t.TempDir(), "output.mp4"))
 	if err == nil || !strings.Contains(err.Error(), "no HEVC video stream") {
 		t.Fatalf("remux error=%v, want missing HEVC error", err)
@@ -66,7 +68,7 @@ func TestRemuxHEVCFixturePreservesStreams(t *testing.T) {
 		t.Fatalf("fixture is not HEVC: %+v", before)
 	}
 	output := filepath.Join(t.TempDir(), "output.mp4")
-	if err := RemuxHEVCHVC1WithContext(context.Background(), path, output); err != nil {
+	if err := RemuxHEVCHVC1(context.Background(), path, output); err != nil {
 		t.Fatal(err)
 	}
 	after, err := Probe(output)
@@ -101,7 +103,7 @@ func TestFixtureProbeAndFiniteAudio(t *testing.T) {
 	if info.DurationNS <= 0 || !info.Audio || !info.Video {
 		t.Fatalf("incomplete probe: %+v", info)
 	}
-	decoder, err := OpenAudio(path, 1, false, 0, "")
+	decoder, err := OpenAudio(context.Background(), path, 1, false, 0, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +143,7 @@ func TestFixtureRNNoiseFiniteAudio(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoder, err := OpenAudio(path, 1, true, 0.2, model)
+	decoder, err := OpenAudio(context.Background(), path, 1, true, 0.2, model)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +187,7 @@ func TestFixtureVAAPIProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, codec := range []string{"h264_vaapi", "hevc_vaapi"} {
+	for _, codec := range []string{VAAPIEncoderName(config.VideoH264), VAAPIEncoderName(config.VideoHEVC)} {
 		if err := ProbeVAAPI(device, codec, info.VideoWidth, info.VideoHeight); err != nil {
 			t.Skipf("%s unavailable on %s: %v", codec, device, err)
 		}

@@ -40,7 +40,7 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 	}
 	analysisCtx, cancelAnalysis := context.WithCancel(ctx)
 	defer cancelAnalysis()
-	decoder, err := media.OpenAudioWithContext(analysisCtx, cfg.Input, 1, cfg.Noise.Enabled,
+	decoder, err := media.OpenAudio(analysisCtx, cfg.Input, 1, cfg.Noise.Enabled,
 		cfg.NoiseStrength(), cfg.Noise.Model)
 	if err != nil {
 		return Result{}, err
@@ -181,7 +181,7 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	if cfg.VideoCodec == config.VideoHEVC {
 		videoTag = string(config.HEVCCodecTagHEV1)
 	}
-	err = media.RenderWithProgressContext(ctx, cfg.Input, temporaryPath, result.Timeline, media.RenderOptions{
+	err = media.Render(ctx, cfg.Input, temporaryPath, result.Timeline, media.RenderOptions{
 		VideoCodec: codec, VideoTag: videoTag, VAAPIDevice: result.VAAPIDevice, OutputMono: cfg.Audio.Mono,
 		RNNoiseEnabled: cfg.Noise.Enabled, RNNoiseStrength: cfg.NoiseStrength(), RNNoiseModel: cfg.Noise.Model,
 	}, func(percent int) {
@@ -205,7 +205,7 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 			return fmt.Errorf("creating temporary remux output: %w", remuxErr)
 		}
 		defer os.Remove(remuxPath)
-		if err := media.RemuxHEVCHVC1WithContext(ctx, temporaryPath, remuxPath); err != nil {
+		if err := media.RemuxHEVCHVC1(ctx, temporaryPath, remuxPath); err != nil {
 			return err
 		}
 		finalPath = remuxPath

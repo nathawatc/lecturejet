@@ -104,16 +104,7 @@ type AudioDecoder struct {
 	cancel   *cancelHandle
 }
 
-func OpenAudio(path string, channels int, rnnoise bool, strength float64, model string) (*AudioDecoder, error) {
-	return openAudio(context.TODO(), path, channels, rnnoise, strength, model)
-}
-
-func OpenAudioWithContext(ctx context.Context, path string, channels int, rnnoise bool,
-	strength float64, model string) (*AudioDecoder, error) {
-	return openAudio(ctx, path, channels, rnnoise, strength, model)
-}
-
-func openAudio(ctx context.Context, path string, channels int, rnnoise bool, strength float64,
+func OpenAudio(ctx context.Context, path string, channels int, rnnoise bool, strength float64,
 	model string) (*AudioDecoder, error) {
 	cancel, err := newCancelHandle(ctx)
 	if err != nil {
@@ -167,41 +158,7 @@ func (d *AudioDecoder) Close() {
 	d.cancel = nil
 }
 
-func RenderWithProgressContext(ctx context.Context, input, output string, source timeline.Timeline,
-	options RenderOptions, progress func(int)) error {
-	return renderWithProgressContext(ctx, input, output, source, options, progress)
-}
-
-func RemuxHEVCHVC1WithContext(ctx context.Context, input, output string) (remuxError error) {
-	cancel, err := newCancelHandle(ctx)
-	if err != nil {
-		return err
-	}
-	defer cancel.close()
-	withRenderCall(func() {
-		cInput := C.CString(input)
-		defer C.free(unsafe.Pointer(cInput))
-		cOutput := C.CString(output)
-		defer C.free(unsafe.Pointer(cOutput))
-		var cancelPtr *C.LJCancelToken
-		if cancel != nil {
-			cancelPtr = cancel.ptr
-		}
-		errorText := make([]byte, errorBufferSize)
-		ret := C.lj_remux_hevc_hvc1(cInput, cOutput, cancelPtr,
-			(*C.char)(unsafe.Pointer(&errorText[0])), C.size_t(len(errorText)))
-		if ctx != nil && ctx.Err() != nil {
-			remuxError = ctx.Err()
-			return
-		}
-		if ret < 0 {
-			remuxError = fmt.Errorf("%s", cString(errorText))
-		}
-	})
-	return remuxError
-}
-
-func renderWithProgressContext(ctx context.Context, input, output string, source timeline.Timeline,
+func Render(ctx context.Context, input, output string, source timeline.Timeline,
 	options RenderOptions, progress func(int)) (renderError error) {
 	cancel, err := newCancelHandle(ctx)
 	if err != nil {
@@ -255,6 +212,35 @@ func renderWithProgressContext(ctx context.Context, input, output string, source
 		}
 	})
 	return renderError
+}
+
+func RemuxHEVCHVC1(ctx context.Context, input, output string) (remuxError error) {
+	cancel, err := newCancelHandle(ctx)
+	if err != nil {
+		return err
+	}
+	defer cancel.close()
+	withRenderCall(func() {
+		cInput := C.CString(input)
+		defer C.free(unsafe.Pointer(cInput))
+		cOutput := C.CString(output)
+		defer C.free(unsafe.Pointer(cOutput))
+		var cancelPtr *C.LJCancelToken
+		if cancel != nil {
+			cancelPtr = cancel.ptr
+		}
+		errorText := make([]byte, errorBufferSize)
+		ret := C.lj_remux_hevc_hvc1(cInput, cOutput, cancelPtr,
+			(*C.char)(unsafe.Pointer(&errorText[0])), C.size_t(len(errorText)))
+		if ctx != nil && ctx.Err() != nil {
+			remuxError = ctx.Err()
+			return
+		}
+		if ret < 0 {
+			remuxError = fmt.Errorf("%s", cString(errorText))
+		}
+	})
+	return remuxError
 }
 
 func boolInt(value bool) C.int {
