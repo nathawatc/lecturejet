@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+assert_duration_delta() {
+  local a="$1"
+  local b="$2"
+  local max_delta="${3:-0.1}"
+  awk -v a="$a" -v b="$b" -v max="$max_delta" 'BEGIN {
+    diff = a - b;
+    if (diff < 0) diff = -diff;
+    if (diff > max) exit 1;
+  }'
+}
+
+assert_av_sync() {
+  local file="$1"
+  local max_delta="${2:-0.1}"
+  local v_dur
+  local a_dur
+  v_dur=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 "$file")
+  a_dur=$(ffprobe -v error -select_streams a:0 -show_entries stream=duration -of csv=p=0 "$file")
+  assert_duration_delta "$v_dur" "$a_dur" "$max_delta"
+}
+
 binary=${1:-./build/lecturejet}
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
@@ -34,9 +55,7 @@ ffmpeg -hide_banner -v error -i "$output" -map 0:v:0 -f null -
 ffmpeg -hide_banner -v info -i "$output" -map 0:a:0 -af astats=metadata=1:reset=0 -f null - 2>"$work_dir/audio.log"
 awk -F': ' '/Number of NaNs:/ { if (($2 + 0) != 0) exit 1 } /Number of Infs:/ { if (($2 + 0) != 0) exit 1 }' "$work_dir/audio.log"
 
-video_duration=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 "$output")
-audio_duration=$(ffprobe -v error -select_streams a:0 -show_entries stream=duration -of csv=p=0 "$output")
-awk -v video="$video_duration" -v audio="$audio_duration" 'BEGIN { difference=video-audio; if (difference < 0) difference=-difference; if (difference > 0.1) exit 1 }'
+assert_av_sync "$output"
 ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts -of csv=p=0 "$output" |
   awk -F, 'BEGIN { last_pts=-1; last_dts=-1 } $1 != "N/A" && $1 < last_pts { exit 1 } $2 != "N/A" && $2 < last_dts { exit 1 } { if ($1 != "N/A") last_pts=$1; if ($2 != "N/A") last_dts=$2 }'
 
@@ -52,9 +71,7 @@ stereo_out_probe=$(ffprobe -v error -select_streams a:0 -show_entries stream=sam
   -of default=nw=1 "$stereo_output")
 grep -q '^channels=2$' <<<"$stereo_out_probe"
 grep -q '^sample_rate=48000$' <<<"$stereo_out_probe"
-stereo_video_duration=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 "$stereo_output")
-stereo_audio_duration=$(ffprobe -v error -select_streams a:0 -show_entries stream=duration -of csv=p=0 "$stereo_output")
-awk -v video="$stereo_video_duration" -v audio="$stereo_audio_duration" 'BEGIN { difference=video-audio; if (difference < 0) difference=-difference; if (difference > 0.1) exit 1 }'
+assert_av_sync "$stereo_output"
 
 echo "Stereo VAAPI integration passed: channels=2, sample_rate=48000"
 
@@ -95,12 +112,10 @@ if [[ "$hevc_supported" -eq 1 ]]; then
   hvc1_audio_codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$hvc1_output")
   [[ "$hvc1_audio_codec" == "aac" ]]
   ffmpeg -hide_banner -v error -i "$hvc1_output" -map 0:v:0 -f null -
-  hvc1_video_duration=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 "$hvc1_output")
-  hvc1_audio_duration=$(ffprobe -v error -select_streams a:0 -show_entries stream=duration -of csv=p=0 "$hvc1_output")
-  awk -v video="$hvc1_video_duration" -v audio="$hvc1_audio_duration" 'BEGIN { difference=video-audio; if (difference < 0) difference=-difference; if (difference > 0.1) exit 1 }'
+  assert_av_sync "$hvc1_output"
   hevc_duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$hevc_output")
   hvc1_duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$hvc1_output")
-  awk -v before="$hevc_duration" -v after="$hvc1_duration" 'BEGIN { difference=before-after; if (difference < 0) difference=-difference; if (difference > 0.1) exit 1 }'
+  assert_duration_delta "$hevc_duration" "$hvc1_duration" 0.1
   hevc_video_packets=$(ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts,size,flags -of csv=p=0 "$hevc_output")
   hvc1_video_packets=$(ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts,size,flags -of csv=p=0 "$hvc1_output")
   [[ "$hevc_video_packets" == "$hvc1_video_packets" ]]
