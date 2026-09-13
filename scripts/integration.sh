@@ -42,9 +42,46 @@ ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts -of csv=p=0 "$
 
 echo "H.264 VAAPI integration passed: A/V duration delta <= 100ms"
 
-hevc_output="$work_dir/output-hevc.mp4"
-if "$binary" "$input" "$hevc_output" --non-interactive --vaapi-device "$device" \
-    --video-codec hevc --mono --threads 2; then
+stereo_output="$work_dir/output-stereo.mp4"
+"$binary" "$stereo_input" "$stereo_output" --non-interactive --vaapi-device "$device" \
+  --video-codec h264 --stereo --threads 2
+[[ -s "$stereo_output" ]]
+ffprobe -hide_banner -v error -show_streams -show_format "$stereo_output" >/dev/null
+ffmpeg -hide_banner -v error -i "$stereo_output" -f null -
+stereo_out_probe=$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate,channels \
+  -of default=nw=1 "$stereo_output")
+grep -q '^channels=2$' <<<"$stereo_out_probe"
+grep -q '^sample_rate=48000$' <<<"$stereo_out_probe"
+stereo_video_duration=$(ffprobe -v error -select_streams v:0 -show_entries stream=duration -of csv=p=0 "$stereo_output")
+stereo_audio_duration=$(ffprobe -v error -select_streams a:0 -show_entries stream=duration -of csv=p=0 "$stereo_output")
+awk -v video="$stereo_video_duration" -v audio="$stereo_audio_duration" 'BEGIN { difference=video-audio; if (difference < 0) difference=-difference; if (difference > 0.1) exit 1 }'
+
+echo "Stereo VAAPI integration passed: channels=2, sample_rate=48000"
+
+input_width=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$input")
+input_height=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$input")
+[[ -n "$input_width" && -n "$input_height" ]]
+
+hevc_probe_log="$work_dir/hevc_probe.log"
+hevc_supported=0
+if ffmpeg -hide_banner -loglevel verbose -init_hw_device "vaapi=hw:$device" -filter_hw_device hw \
+    -f lavfi -i "color=s=${input_width}x${input_height}:d=0.04" -vf "format=nv12,hwupload" \
+    -c:v hevc_vaapi -f null - >"$hevc_probe_log" 2>&1; then
+  hevc_supported=1
+else
+  if grep -q -i -E "unknown encoder|error while opening encoder|function not implemented|no matching.*profile|failed to create encode pipeline|does not support|not supported|unsupported profile|encoder not found|vacreateconfig|vacreatecontext" "$hevc_probe_log"; then
+    echo "SKIP hevc_vaapi integration: encoder/device rejected HEVC" >&2
+  else
+    echo "ERROR: hevc_vaapi capability probe failed unexpectedly:" >&2
+    cat "$hevc_probe_log" >&2
+    exit 1
+  fi
+fi
+
+if [[ "$hevc_supported" -eq 1 ]]; then
+  hevc_output="$work_dir/output-hevc.mp4"
+  "$binary" "$input" "$hevc_output" --non-interactive --vaapi-device "$device" \
+    --video-codec hevc --mono --threads 2
   hevc_tag=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_tag_string -of csv=p=0 "$hevc_output")
   [[ "$hevc_tag" == "hev1" ]]
   ffmpeg -hide_banner -v error -i "$hevc_output" -map 0:v:0 -f null -
@@ -70,6 +107,4 @@ if "$binary" "$input" "$hevc_output" --non-interactive --vaapi-device "$device" 
   ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts -of csv=p=0 "$hvc1_output" |
     awk -F, 'BEGIN { have_dts=0 } $2 != "N/A" { if (have_dts && $2 < last_dts) exit 1; last_dts=$2; have_dts=1 }'
   echo "HEVC VAAPI integration passed: hev1 and hvc1 tags"
-else
-  echo "SKIP hevc_vaapi integration: encoder/device rejected HEVC" >&2
 fi
