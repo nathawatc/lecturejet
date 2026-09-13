@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDefaultLectureSettings(t *testing.T) {
 	cfg := Default()
@@ -39,6 +42,27 @@ func TestValidation(t *testing.T) {
 	base.HEVCCodecTag = HEVCCodecTagHVC1
 	if err := base.Validate(); err != nil {
 		t.Fatalf("valid HEVC tag and zero strength rejected: %v", err)
+	}
+}
+
+func TestRNNoiseValidationErrorCapitalization(t *testing.T) {
+	cfg := Default()
+	cfg.Input = "in.mp4"
+	cfg.Output = "out.mp4"
+	cfg.Noise.Strength = 101
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "RNNoise strength must be between 0 and 100") {
+		t.Fatalf("expected capitalized RNNoise strength error, got: %v", err)
+	}
+
+	cfg = Default()
+	cfg.Input = "in.mp4"
+	cfg.Output = "out.mp4"
+	cfg.Noise.Enabled = true
+	cfg.Audio.Mono = false
+	err = cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "RNNoise requires mono output") {
+		t.Fatalf("expected capitalized RNNoise requires mono error, got: %v", err)
 	}
 }
 

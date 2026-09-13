@@ -36,6 +36,9 @@ func newCancelHandle(ctx context.Context) (*cancelHandle, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if ctx.Done() == nil {
+		return nil, nil
+	}
 	ptr := C.lj_cancel_token_create()
 	if ptr == nil {
 		return nil, fmt.Errorf("creating cancellation token: out of memory")
@@ -107,7 +110,7 @@ type AudioDecoder struct {
 }
 
 func OpenAudio(path string, channels int, rnnoise bool, strength float64, model string) (*AudioDecoder, error) {
-	return openAudio(nil, path, channels, rnnoise, strength, model)
+	return openAudio(context.TODO(), path, channels, rnnoise, strength, model)
 }
 
 func OpenAudioWithContext(ctx context.Context, path string, channels int, rnnoise bool,
@@ -170,12 +173,12 @@ func (d *AudioDecoder) Close() {
 }
 
 func Render(input, output string, source timeline.Timeline, options RenderOptions) error {
-	return renderWithProgressContext(nil, input, output, source, options, nil)
+	return renderWithProgressContext(context.TODO(), input, output, source, options, nil)
 }
 
 func RenderWithProgress(input, output string, source timeline.Timeline, options RenderOptions,
 	progress func(int)) error {
-	return renderWithProgressContext(nil, input, output, source, options, progress)
+	return renderWithProgressContext(context.TODO(), input, output, source, options, progress)
 }
 
 func RenderWithProgressContext(ctx context.Context, input, output string, source timeline.Timeline,

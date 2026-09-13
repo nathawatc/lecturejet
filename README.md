@@ -61,7 +61,6 @@ asks about RNNoise and mono output. Flags resolve choices for automation:
 
 ```bash
 lecturejet lecture.mp4 output.mp4 \
-  --force \
   --video-codec hevc \
   --hevc-tag hvc1 \
   --vaapi-device /dev/dri/renderD128 \
@@ -69,10 +68,9 @@ lecturejet lecture.mp4 output.mp4 \
   --mono --threads auto --non-interactive
 ```
 
-`--force` allows replacing an existing regular output file. `--stereo` produces
-two-channel output (incompatible with `--rnnoise`). `--mono` default. Codec
-values: `hevc`, `h264`. HEVC tags: `--hevc-tag hev1` (default) or `hvc1` for
-Apple compatibility.
+`--stereo` produces two-channel output (incompatible with `--rnnoise`). `--mono`
+default. Codec values: `hevc`, `h264`. HEVC tags: `--hevc-tag hev1` (default) or
+`hvc1` for Apple compatibility.
 
 Analysis-only mode:
 
@@ -88,8 +86,8 @@ Silence controls:
 --margin MS            default 150
 ```
 
-`--threads auto` selects up to eight ordered batch workers. Bounded queues stream
-PCM; memory stays bounded regardless of lecture duration.
+`--threads auto` selects up to eight ordered batch workers. Bounded queues
+stream PCM; memory stays bounded regardless of lecture duration.
 
 ## RNNoise
 
@@ -135,11 +133,16 @@ device rejects it. Both outputs are probed and decoded when available.
 
 ## Troubleshooting
 
-- `no usable VAAPI encoder`: check `/dev/dri/renderD*`, user groups, vendor driver, and `ffmpeg -hide_banner -encoders | grep vaapi`.
-- `opening VAAPI device ... permission denied`: grant render-device access or choose another `--vaapi-device`.
-- `encoder is unavailable for selected VAAPI device`: use wizard codec; hardware capability is device-specific.
-- `opening RNNoise ... model path is required`: pass `--rnnoise-model /path/to/model.rnnn`.
-- Native FFmpeg errors include operation and library detail. LectureJet never silently changes explicitly selected codec.
+- `no usable VAAPI encoder`: check `/dev/dri/renderD*`, user groups, vendor
+  driver, and `ffmpeg -hide_banner -encoders | grep vaapi`.
+- `opening VAAPI device ... permission denied`: grant render-device access or
+  choose another `--vaapi-device`.
+- `encoder is unavailable for selected VAAPI device`: use wizard codec;
+  hardware capability is device-specific.
+- `opening RNNoise ... model path is required`: pass
+  `--rnnoise-model /path/to/model.rnnn`.
+- Native FFmpeg errors include operation and library detail. LectureJet never
+  silently changes explicitly selected codec.
 
 ## Known limitations
 

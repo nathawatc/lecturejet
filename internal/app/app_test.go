@@ -16,18 +16,6 @@ import (
 func TestAnalyzeCancellationWaitsForDecoder(t *testing.T) {
 	path := os.Getenv("LECTUREJET_TEST_MEDIA")
 	if path == "" {
-		candidates := []string{
-			"testdata/synthetic.mp4",
-			filepath.Join("..", "..", "testdata", "synthetic.mp4"),
-		}
-		for _, c := range candidates {
-			if _, err := os.Stat(c); err == nil {
-				path = c
-				break
-			}
-		}
-	}
-	if path == "" {
 		t.Skip("set LECTUREJET_TEST_MEDIA to run cancellation integration test")
 	}
 	path, err := filepath.Abs(path)
@@ -48,19 +36,7 @@ func TestAnalyzeCancellationWaitsForDecoder(t *testing.T) {
 func TestAnalyzeSyntheticFixture(t *testing.T) {
 	path := os.Getenv("LECTUREJET_TEST_MEDIA")
 	if path == "" {
-		candidates := []string{
-			"testdata/synthetic.mp4",
-			filepath.Join("..", "..", "testdata", "synthetic.mp4"),
-		}
-		for _, c := range candidates {
-			if _, err := os.Stat(c); err == nil {
-				path = c
-				break
-			}
-		}
-	}
-	if path == "" {
-		t.Skip("fixture testdata/synthetic.mp4 not found")
+		t.Skip("set LECTUREJET_TEST_MEDIA to run analyze synthetic fixture test")
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {

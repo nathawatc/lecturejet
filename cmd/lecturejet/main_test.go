@@ -429,6 +429,21 @@ func TestSelectVAAPIConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("case 8: implicit device + implicit codec errors without claiming device was selected", func(t *testing.T) {
+		cfg := config.Default()
+		choices := []ui.VAAPIChoice{}
+		_, err := selectVAAPIConfig(cfg, choices, false, false, 1920, 1080)
+		if err == nil {
+			t.Fatal("expected error when no usable choices are available")
+		}
+		if strings.Contains(err.Error(), "selected device") {
+			t.Fatalf("error should not mention selected device when device was implicit: %v", err)
+		}
+		if !strings.Contains(err.Error(), "no usable VAAPI encoder for 1920x1080") {
+			t.Fatalf("unexpected error message: %v", err)
+		}
+	})
+
 	t.Run("explicit device never silently switches to another device", func(t *testing.T) {
 		cfg := config.Default()
 		cfg.VAAPIDevice = "/dev/dri/renderD128"
@@ -687,6 +702,11 @@ func TestVersionFormatters(t *testing.T) {
 	versionOverride = "v0.2.0"
 	if got := currentVersion(); got != "0.2.0" {
 		t.Errorf("currentVersion() with override = %q; want %q", got, "0.2.0")
+	}
+
+	versionOverride = "v9.9.9"
+	if got := versionFromBuildInfo(infoTagged); got != "0.1.0" {
+		t.Errorf("versionFromBuildInfo should be pure and ignore versionOverride; got %q, want %q", got, "0.1.0")
 	}
 }
 

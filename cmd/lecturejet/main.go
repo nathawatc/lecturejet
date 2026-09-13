@@ -60,9 +60,6 @@ func formatVersion(v string) string {
 }
 
 func versionFromBuildInfo(info *debug.BuildInfo) string {
-	if versionOverride != "" {
-		return formatVersion(versionOverride)
-	}
 	if info != nil && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return formatVersion(info.Main.Version)
 	}
@@ -230,7 +227,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			if codecExplicit {
 				return fmt.Errorf("selected %s VAAPI encoder is unavailable for this input/device", cfg.VideoCodec)
 			}
-			return fmt.Errorf("no usable VAAPI encoder for %dx%d on selected device", info.VideoWidth, info.VideoHeight)
+			if deviceExplicit {
+				return fmt.Errorf("no usable VAAPI encoder for %dx%d on selected device", info.VideoWidth, info.VideoHeight)
+			}
+			return fmt.Errorf("no usable VAAPI encoder for %dx%d", info.VideoWidth, info.VideoHeight)
 		}
 		cfg, err = ui.Configure(stdin, stderr, cfg, choices)
 		if err != nil {
@@ -286,7 +286,10 @@ func selectVAAPIConfig(
 		if codecExplicit {
 			return config.Config{}, fmt.Errorf("selected %s VAAPI encoder is unavailable for this input/device", cfg.VideoCodec)
 		}
-		return config.Config{}, fmt.Errorf("no usable VAAPI encoder for %dx%d on selected device", width, height)
+		if deviceExplicit {
+			return config.Config{}, fmt.Errorf("no usable VAAPI encoder for %dx%d on selected device", width, height)
+		}
+		return config.Config{}, fmt.Errorf("no usable VAAPI encoder for %dx%d", width, height)
 	}
 
 	if !codecExplicit {
@@ -401,9 +404,7 @@ func parseAnalyzeArgs(args []string) (config.Config, error) {
 	if flags.NArg() != 0 {
 		return config.Config{}, fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
 	}
-	cfg.Noise.Enabled = *af.rnnoise
-	cfg.Noise.Strength = *af.strength
-	cfg.Noise.Model = *af.model
+	cfg.Noise.Enabled, cfg.Noise.Strength, cfg.Noise.Model = *af.rnnoise, *af.strength, *af.model
 	cfg.Silence.ThresholdDB = *af.threshold
 	cfg.Silence.MinSilenceMS = *af.minSilence
 	cfg.Silence.MarginMS = *af.margin
