@@ -818,7 +818,15 @@ typedef struct LJTimelineView {
 	size_t cursor;
 } LJTimelineView;
 
-static void lj_timeline_free(LJTimelineView *view);
+static void lj_timeline_free(LJTimelineView *view)
+{
+	if (!view)
+		return;
+	free(view->output_start);
+	free(view->sample_start);
+	free(view->sample_end);
+	memset(view, 0, sizeof(*view));
+}
 
 static int lj_timeline_init(LJTimelineView *view, const LJSegment *segments, size_t count)
 {
@@ -854,16 +862,6 @@ static int lj_timeline_init(LJTimelineView *view, const LJSegment *segments, siz
 	}
 	view->source_end = position;
 	return 0;
-}
-
-static void lj_timeline_free(LJTimelineView *view)
-{
-	if (!view)
-		return;
-	free(view->output_start);
-	free(view->sample_start);
-	free(view->sample_end);
-	memset(view, 0, sizeof(*view));
 }
 
 static int lj_timeline_lookup_ns(LJTimelineView *view, int64_t source_ns, size_t *index)
