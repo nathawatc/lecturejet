@@ -78,7 +78,7 @@ func (c Config) Validate() error {
 		return fmt.Errorf("output path is required")
 	}
 	if strings.ToLower(filepath.Ext(c.Output)) != ".mp4" {
-		return fmt.Errorf("unsupported output format %q: v0.1.0 supports .mp4 output only", c.Output)
+		return fmt.Errorf("unsupported output format %q: supports .mp4 output only", c.Output)
 	}
 	if c.Threads < 0 {
 		return fmt.Errorf("threads cannot be negative")
