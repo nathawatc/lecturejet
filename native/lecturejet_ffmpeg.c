@@ -139,6 +139,8 @@ static int64_t lj_stream_duration_ns(const AVStream *stream)
 
 int lj_probe_file(const char *path, LJProbeInfo *info, char *error, size_t error_size)
 {
+	if (error && error_size > 0)
+		error[0] = '\0';
 	if (!path || !info) {
 		lj_error(error, error_size, "probing media: invalid argument");
 		return AVERROR(EINVAL);
@@ -224,6 +226,8 @@ static int lj_alloc_vaapi_frames(AVBufferRef *device_ref, enum AVPixelFormat sw_
 int lj_probe_vaapi(const char *device, const char *codec, int width, int height,
 	char *error, size_t error_size)
 {
+	if (error && error_size > 0)
+		error[0] = '\0';
 	if (!codec || width <= 0 || height <= 0) {
 		lj_error(error, error_size, "probing VAAPI: invalid codec or dimensions");
 		return AVERROR(EINVAL);
@@ -743,6 +747,8 @@ fail:
 int lj_audio_read(LJAudioDecoder *decoder, float *output, int max_samples,
 	int64_t *start_sample, char *error, size_t error_size)
 {
+	if (error && error_size > 0)
+		error[0] = '\0';
 	if (!decoder || !output || max_samples <= 0) {
 		lj_error(error, error_size, "reading audio: invalid argument");
 		return -1;
@@ -1526,6 +1532,8 @@ int lj_render_file(const char *input, const char *output,
 	const LJRenderOptions *options, LJProgressCallback progress,
 	char *error, size_t error_size)
 {
+	if (error && error_size > 0)
+		error[0] = '\0';
 	if (!input || !output || !segments || segment_count == 0 || !options ||
 		!options->video_codec) {
 		lj_error(error, error_size, "rendering: invalid argument");
@@ -1634,8 +1642,16 @@ done:
 			lj_fferror(error, error_size, "rendering", ret);
 	}
 	if (state.output) {
-		if (!(state.output->oformat->flags & AVFMT_NOFILE))
-			avio_closep(&state.output->pb);
+		if (!(state.output->oformat->flags & AVFMT_NOFILE)) {
+			int close_ret = avio_closep(&state.output->pb);
+			if (ret >= 0 && close_ret < 0) {
+				ret = close_ret;
+				if (lj_cancel_requested(state.cancel))
+					lj_error(error, error_size, "operation cancelled");
+				else
+					lj_fferror(error, error_size, "closing output", ret);
+			}
+		}
 		avformat_free_context(state.output);
 	}
 	sws_freeContext(state.scaler);
