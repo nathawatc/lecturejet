@@ -12,11 +12,19 @@ import (
 	"testing"
 
 	"codeberg.org/nathawat/lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
 
 func TestInvalidRNNoiseConfigurationFailsClearly(t *testing.T) {
 	if _, err := OpenAudio(context.Background(), "not-used", 1, true, 0.2, ""); err == nil {
 		t.Fatal("missing RNNoise model accepted")
+	}
+}
+
+func TestRenderRejectsEmptyTimeline(t *testing.T) {
+	err := Render(context.Background(), "not-used.mp4", "output.mp4", timeline.Timeline{}, RenderOptions{}, nil)
+	if err == nil || !strings.Contains(err.Error(), "no segments") {
+		t.Fatalf("expected error for empty timeline, got: %v", err)
 	}
 }
 

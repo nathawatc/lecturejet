@@ -160,6 +160,10 @@ func (d *AudioDecoder) Close() {
 
 func Render(ctx context.Context, input, output string, source timeline.Timeline,
 	options RenderOptions, progress func(int)) (renderError error) {
+	segments := source.Segments()
+	if len(segments) == 0 {
+		return fmt.Errorf("rendering: timeline contains no segments")
+	}
 	cancel, err := newCancelHandle(ctx)
 	if err != nil {
 		return err
@@ -182,7 +186,6 @@ func Render(ctx context.Context, input, output string, source timeline.Timeline,
 		if cancel != nil {
 			cancelPtr = cancel.ptr
 		}
-		segments := source.Segments()
 		cSegments := make([]C.LJSegment, len(segments))
 		for i, segment := range segments {
 			cSegments[i] = C.LJSegment{start_ns: C.int64_t(segment.Start), end_ns: C.int64_t(segment.End), action: C.int(segment.Action)}
