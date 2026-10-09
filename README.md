@@ -15,7 +15,7 @@ Removes silence from recorded lectures while preserving natural speech cadence.
 
 - **OS**: Linux (kernel 3.15+ for atomic replacement support)
 - **Hardware**: GPU with VAAPI support
-- **Go**: 1.22 or newer
+- **Go**: 1.26 or newer
 - **FFmpeg**
 
 ### Arch Linux
