@@ -16,13 +16,12 @@ type VAAPIChoice struct {
 
 // ProbeVAAPIChoices discovers usable VAAPI encoders for the probed input dimensions.
 func ProbeVAAPIChoices(info media.ProbeInfo, preferred config.VideoCodec, requestedDevice string) []VAAPIChoice {
-	devices := []string{}
+	var devices []string
 	if requestedDevice != "" {
-		devices = append(devices, requestedDevice)
+		devices = []string{requestedDevice}
 	} else {
-		matches, _ := filepath.Glob("/dev/dri/renderD*")
-		sort.Strings(matches)
-		devices = matches
+		devices, _ = filepath.Glob("/dev/dri/renderD*")
+		sort.Strings(devices)
 	}
 	codecs := []config.VideoCodec{preferred}
 	if preferred == config.VideoHEVC {
