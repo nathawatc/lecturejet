@@ -35,6 +35,11 @@ stereo_probe=$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_
 grep -q '^sample_rate=44100$' <<<"$stereo_probe"
 grep -q '^channels=2$' <<<"$stereo_probe"
 
+audio_only="$work_dir/audio-only.mp4"
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'sine=frequency=440:duration=1' -c:a aac "$audio_only"
+audio_only_err=$("$binary" "$audio_only" "$work_dir/audio-out.mp4" --non-interactive 2>&1 || true)
+grep -q 'input has no video stream' <<<"$audio_only_err"
+
 device=${LECTUREJET_VAAPI_DEVICE:-}
 if [[ -z "$device" ]]; then
 	for candidate in /dev/dri/renderD*; do

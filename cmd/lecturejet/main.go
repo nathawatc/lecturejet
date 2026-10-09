@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"codeberg.org/nathawat/lecturejet/internal/app"
 	"codeberg.org/nathawat/lecturejet/internal/config"
@@ -212,6 +213,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("probe %s: %w", cfg.Input, err)
 	}
+	if !info.Video {
+		return fmt.Errorf("input has no video stream")
+	}
 	choices := ui.ProbeVAAPIChoices(info, cfg.VideoCodec, cfg.VAAPIDevice)
 	if interactive {
 		if codecExplicit {
@@ -233,10 +237,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	if !info.Video {
-		return fmt.Errorf("input has no video stream")
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	result, err := app.Analyze(ctx, cfg, stderr)
 	if err != nil {
@@ -268,7 +269,7 @@ func runAnalyze(args []string, stdout, stderr io.Writer) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	result, err := app.Analyze(ctx, cfg, stderr)
 	if err != nil {
