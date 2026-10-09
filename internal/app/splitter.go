@@ -52,14 +52,7 @@ func (s *pcmBlockSplitter) Push(chunk []float32, start int64, emit func(analyze.
 		consumed += toCopy
 
 		if len(s.buffer) == s.blockSize {
-			block := analyze.PCMBlock{
-				Index:       s.nextIndex,
-				StartSample: s.blockStart,
-				Samples:     s.buffer,
-			}
-			s.nextIndex++
-			s.buffer = nil
-			if err := emit(block); err != nil {
+			if err := s.emitBlock(emit); err != nil {
 				return err
 			}
 		}
@@ -72,6 +65,10 @@ func (s *pcmBlockSplitter) Flush(emit func(analyze.PCMBlock) error) error {
 	if len(s.buffer) == 0 {
 		return nil
 	}
+	return s.emitBlock(emit)
+}
+
+func (s *pcmBlockSplitter) emitBlock(emit func(analyze.PCMBlock) error) error {
 	block := analyze.PCMBlock{
 		Index:       s.nextIndex,
 		StartSample: s.blockStart,
