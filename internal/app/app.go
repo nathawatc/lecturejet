@@ -166,7 +166,7 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 		return fmt.Errorf("no usable VAAPI device selected")
 	}
 	if status != nil {
-		fmt.Fprintf(status, "Rendering %s VAAPI... 0%%\n", strings.ToUpper(string(cfg.VideoCodec)))
+		fmt.Fprintf(status, "Rendering %s VAAPI...", strings.ToUpper(string(cfg.VideoCodec)))
 	}
 	directory := filepath.Dir(cfg.Output)
 	base := filepath.Base(cfg.Output)
@@ -217,7 +217,7 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 		return err
 	}
 	if status != nil {
-		fmt.Fprintf(status, "Rendering %s VAAPI... 100%%\n", strings.ToUpper(string(cfg.VideoCodec)))
+		fmt.Fprintf(status, "\rRendering %s VAAPI... 100%%\n", strings.ToUpper(string(cfg.VideoCodec)))
 	}
 	return nil
 }
