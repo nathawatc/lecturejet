@@ -103,6 +103,9 @@ func (d *Detector) finishCandidate(endSample int64) {
 }
 
 func AnalyzeWindow(samples []float32) WindowMetric {
+	if len(samples) == 0 {
+		return WindowMetric{}
+	}
 	var sum float64
 	var peak float32
 	nonFinite := false
@@ -116,9 +119,6 @@ func AnalyzeWindow(samples []float32) WindowMetric {
 			peak = value
 		}
 		sum += float64(sample) * float64(sample)
-	}
-	if len(samples) == 0 {
-		return WindowMetric{}
 	}
 	if nonFinite {
 		// Never turn corrupt PCM into an apparent silent window.
