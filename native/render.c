@@ -306,6 +306,28 @@ static int lj_open_video_encoder(LJRenderState *state, const LJRenderOptions *op
 	return 0;
 }
 
+static int lj_send_and_drain_video(LJRenderState *state, AVFrame *frame)
+{
+	int ret;
+	for (;;) {
+		int cancel_ret = lj_abort_if_cancelled(state->cancel, state->error,
+			sizeof(state->error));
+		if (cancel_ret < 0)
+			return cancel_ret;
+		ret = avcodec_send_frame(state->video_encoder, frame);
+		if (ret == AVERROR(EAGAIN)) {
+			int drain_ret = lj_drain_video(state);
+			if (drain_ret < 0)
+				return drain_ret;
+			continue;
+		}
+		break;
+	}
+	if (ret < 0)
+		return ret;
+	return lj_drain_video(state);
+}
+
 static int lj_encode_video_frame(LJRenderState *state, AVFrame *decoded,
 	int64_t output_pts)
 {
@@ -314,10 +336,10 @@ static int lj_encode_video_frame(LJRenderState *state, AVFrame *decoded,
 		return ret;
 	if (decoded->format == AV_PIX_FMT_VAAPI) {
 		decoded->pts = output_pts;
-		ret = avcodec_send_frame(state->video_encoder, decoded);
+		ret = lj_send_and_drain_video(state, decoded);
 		if (ret >= 0) {
 			state->last_video_pts = output_pts;
-			return lj_drain_video(state);
+			return 0;
 		}
 		AVFrame *downloaded = av_frame_alloc();
 		if (!downloaded)
@@ -362,18 +384,21 @@ static int lj_encode_video_frame(LJRenderState *state, AVFrame *decoded,
 				state->software_frame->linesize) > 0
 		? 0
 		: AVERROR(EINVAL);
-	if (ret >= 0)
+	if (ret >= 0) {
 		ret = av_hwframe_get_buffer(state->hw_frames, state->hardware_frame, 0);
+		if (ret < 0) {
+			lj_drain_video(state);
+			ret = av_hwframe_get_buffer(state->hw_frames, state->hardware_frame, 0);
+		}
+	}
 	if (ret >= 0)
 		ret = av_hwframe_transfer_data(state->hardware_frame, state->software_frame, 0);
 	if (ret >= 0) {
 		state->hardware_frame->pts = output_pts;
-		ret = avcodec_send_frame(state->video_encoder, state->hardware_frame);
+		ret = lj_send_and_drain_video(state, state->hardware_frame);
 	}
 	av_frame_unref(state->hardware_frame);
-	if (ret < 0)
-		return ret;
-	return lj_drain_video(state);
+	return ret;
 }
 
 static int lj_render_audio(LJRenderState *state, const char *input,
