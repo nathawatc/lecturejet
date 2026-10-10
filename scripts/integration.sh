@@ -100,6 +100,26 @@ assert_av_sync "$output"
 assert_monotonic_timestamps "$output"
 echo "H.264 VAAPI integration passed: A/V duration delta <= 100ms"
 
+# H.264 VAAPI render with automatic default output
+auto_input="$work_dir/auto-test.mp4"
+cp "$input" "$auto_input"
+"$binary" "$auto_input" --non-interactive --vaapi-device "$device" \
+	--video-codec h264 --mono --threads 2
+verify_media "$work_dir/auto-test.out.mp4"
+echo "Automatic default output integration passed: auto-test.out.mp4 generated"
+
+# H.264 VAAPI render overriding current file with --force
+override_input="$work_dir/override-test.mp4"
+cp "$input" "$override_input"
+orig_duration=$(probe_stream v:0 duration "$override_input")
+"$binary" "$override_input" --force --non-interactive --vaapi-device "$device" \
+	--video-codec h264 --mono --threads 2
+verify_media "$override_input"
+[[ ! -e "$work_dir/override-test.out.mp4" ]]
+new_duration=$(probe_stream v:0 duration "$override_input")
+awk -v o="$orig_duration" -v n="$new_duration" 'BEGIN { if (n >= o) exit 1 }'
+echo "Override current file integration passed: in-place overwrite with --force"
+
 # Stereo VAAPI render
 stereo_output="$work_dir/output-stereo.mp4"
 "$binary" "$stereo_input" "$stereo_output" --non-interactive --vaapi-device "$device" \

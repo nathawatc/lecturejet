@@ -83,17 +83,27 @@ func TestPreflightSamePath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("input == output -> error", func(t *testing.T) {
+	t.Run("input == output without force -> error", func(t *testing.T) {
 		cfg := config.Default()
 		cfg.Input = inputPath
 		cfg.Output = inputPath
-		cfg.Force = true // Even with force, input == output must fail
+		cfg.Force = false
 		if err := Preflight(cfg); err == nil {
-			t.Fatal("expected error when input == output, got nil")
+			t.Fatal("expected error when input == output without force, got nil")
 		}
 	})
 
-	t.Run("input vs ./input -> error", func(t *testing.T) {
+	t.Run("input == output with force -> success", func(t *testing.T) {
+		cfg := config.Default()
+		cfg.Input = inputPath
+		cfg.Output = inputPath
+		cfg.Force = true
+		if err := Preflight(cfg); err != nil {
+			t.Fatalf("expected nil when input == output with force, got: %v", err)
+		}
+	})
+
+	t.Run("input vs ./input without force -> error", func(t *testing.T) {
 		// Change working directory relative path test
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -107,13 +117,13 @@ func TestPreflightSamePath(t *testing.T) {
 		cfg := config.Default()
 		cfg.Input = "input.mp4"
 		cfg.Output = "./input.mp4"
-		cfg.Force = true
+		cfg.Force = false
 		if err := Preflight(cfg); err == nil {
-			t.Fatal("expected error when input vs ./input, got nil")
+			t.Fatal("expected error when input vs ./input without force, got nil")
 		}
 	})
 
-	t.Run("input symlink == output existing file -> error", func(t *testing.T) {
+	t.Run("input symlink == output existing file without force -> error", func(t *testing.T) {
 		symlinkPath := filepath.Join(dir, "symlink.mp4")
 		if err := os.Symlink(inputPath, symlinkPath); err != nil {
 			t.Skip("symlink not supported on this filesystem")
@@ -123,7 +133,7 @@ func TestPreflightSamePath(t *testing.T) {
 		cfg := config.Default()
 		cfg.Input = symlinkPath
 		cfg.Output = inputPath
-		cfg.Force = true
+		cfg.Force = false
 		if err := Preflight(cfg); err == nil {
 			t.Fatal("expected error when input symlink references output file, got nil")
 		}
@@ -131,13 +141,13 @@ func TestPreflightSamePath(t *testing.T) {
 		// Also check inverse: input is real file, output is symlink to it
 		cfg.Input = inputPath
 		cfg.Output = symlinkPath
-		cfg.Force = true
+		cfg.Force = false
 		if err := Preflight(cfg); err == nil {
 			t.Fatal("expected error when output symlink references input file, got nil")
 		}
 	})
 
-	t.Run("input hardlink == output existing file -> error", func(t *testing.T) {
+	t.Run("input hardlink == output existing file without force -> error", func(t *testing.T) {
 		hardlinkPath := filepath.Join(dir, "hardlink.mp4")
 		if err := os.Link(inputPath, hardlinkPath); err != nil {
 			t.Skip("hardlink not supported on this filesystem")
@@ -147,7 +157,7 @@ func TestPreflightSamePath(t *testing.T) {
 		cfg := config.Default()
 		cfg.Input = hardlinkPath
 		cfg.Output = inputPath
-		cfg.Force = true
+		cfg.Force = false
 		if err := Preflight(cfg); err == nil {
 			t.Fatal("expected error when input hardlink references same file as output, got nil")
 		}

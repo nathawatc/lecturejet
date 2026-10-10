@@ -16,7 +16,7 @@ func Preflight(cfg config.Config) error {
 	outClean := filepath.Clean(cfg.Output)
 	inAbs, inErr := filepath.Abs(inClean)
 	outAbs, outErr := filepath.Abs(outClean)
-	if (inErr == nil && outErr == nil && inAbs == outAbs) || inClean == outClean {
+	if ((inErr == nil && outErr == nil && inAbs == outAbs) || inClean == outClean) && !cfg.Force {
 		return fmt.Errorf("input and output must not refer to the same file: %s", cfg.Input)
 	}
 
@@ -35,7 +35,7 @@ func Preflight(cfg config.Config) error {
 			return fmt.Errorf("output path is a directory: %s", cfg.Output)
 		}
 		if inInfo, inErr := os.Stat(cfg.Input); inErr == nil {
-			if statOut, err := os.Stat(cfg.Output); err == nil && os.SameFile(inInfo, statOut) {
+			if statOut, err := os.Stat(cfg.Output); err == nil && os.SameFile(inInfo, statOut) && !cfg.Force {
 				return fmt.Errorf("input and output refer to the same file: %s", cfg.Input)
 			}
 		}

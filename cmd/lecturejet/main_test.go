@@ -73,6 +73,24 @@ func TestRunEarlyValidationBeforeAnalysis(t *testing.T) {
 			t.Fatalf("existing destination was modified: %q", string(data))
 		}
 	})
+	t.Run("default output without force reaches probe", func(t *testing.T) {
+		err := run([]string{filepath.Join(dir, "nonexistent-input.mp4"), "--non-interactive"}, nil, &stdout, &stderr)
+		if err == nil {
+			t.Fatal("expected probe error on nonexistent input, got nil")
+		}
+		if !strings.Contains(err.Error(), "probe ") {
+			t.Fatalf("expected failure at media probe, got: %v", err)
+		}
+	})
+	t.Run("default output with force overrides input and reaches probe", func(t *testing.T) {
+		err := run([]string{filepath.Join(dir, "nonexistent-input.mp4"), "--force", "--non-interactive"}, nil, &stdout, &stderr)
+		if err == nil {
+			t.Fatal("expected probe error on nonexistent input, got nil")
+		}
+		if !strings.Contains(err.Error(), "probe ") {
+			t.Fatalf("expected failure at media probe, got: %v", err)
+		}
+	})
 }
 
 func TestSelectVAAPIRegressionSingleDashExplicitCodecDoesNotFallback(t *testing.T) {
@@ -277,7 +295,7 @@ func TestInvalidCommandBehavior(t *testing.T) {
 		{
 			name:    "empty args",
 			args:    []string{},
-			wantErr: "usage: lecturejet input.mp4 output.mp4",
+			wantErr: "usage: lecturejet input.mp4 [output.mp4]",
 		},
 		{
 			name:    "analyze missing input",
@@ -285,9 +303,9 @@ func TestInvalidCommandBehavior(t *testing.T) {
 			wantErr: "usage: lecturejet analyze input.mp4",
 		},
 		{
-			name:    "render missing output",
-			args:    []string{"input.mp4"},
-			wantErr: "usage: lecturejet input.mp4 output.mp4",
+			name:    "render missing input flag",
+			args:    []string{"--force"},
+			wantErr: "usage: lecturejet input.mp4 [output.mp4]",
 		},
 		{
 			name:    "analyze unknown flag",

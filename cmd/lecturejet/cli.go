@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -127,9 +128,17 @@ func newAnalyzeFlagSet(cfg config.Config, out io.Writer) (*flag.FlagSet, *analyz
 	return flags, af
 }
 
+func defaultOutput(input string) string {
+	ext := filepath.Ext(input)
+	if ext == "" {
+		return input + ".out"
+	}
+	return strings.TrimSuffix(input, ext) + ".out" + ext
+}
+
 func printTopLevelHelp(out io.Writer) {
 	fmt.Fprintln(out, "Usage:")
-	fmt.Fprintln(out, "  lecturejet <input.mp4> <output.mp4> [options]")
+	fmt.Fprintln(out, "  lecturejet <input.mp4> [output.mp4] [options]")
 	fmt.Fprintln(out, "  lecturejet analyze <input.mp4> [options]")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Commands:")
@@ -144,7 +153,7 @@ func printTopLevelHelp(out io.Writer) {
 
 func printRenderHelp(out io.Writer) {
 	fmt.Fprintln(out, "Usage:")
-	fmt.Fprintln(out, "  lecturejet <input.mp4> <output.mp4> [options]")
+	fmt.Fprintln(out, "  lecturejet <input.mp4> [output.mp4] [options]")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Options:")
 	flags, _ := newRenderFlagSet(config.Default(), out)
@@ -161,19 +170,27 @@ func printAnalyzeHelp(out io.Writer) {
 }
 
 func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
-	if len(args) < 2 {
+	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
 		if hasHelpFlag(args) {
 			return config.Config{}, false, false, flag.ErrHelp
 		}
-		return config.Config{}, false, false, fmt.Errorf("usage: lecturejet input.mp4 output.mp4 [options]")
-	}
-	if isHelpFlag(args[1]) {
-		return config.Config{}, false, false, flag.ErrHelp
+		return config.Config{}, false, false, fmt.Errorf("usage: lecturejet input.mp4 [output.mp4] [options]")
 	}
 	cfg := config.Default()
-	cfg.Input, cfg.Output = args[0], args[1]
+	cfg.Input = args[0]
+
+	var flagArgs []string
+	autoOutput := false
+	if len(args) > 1 && !strings.HasPrefix(args[1], "-") {
+		cfg.Output = args[1]
+		flagArgs = args[2:]
+	} else {
+		autoOutput = true
+		flagArgs = args[1:]
+	}
+
 	flags, rf := newRenderFlagSet(cfg, io.Discard)
-	if err := flags.Parse(args[2:]); err != nil {
+	if err := flags.Parse(flagArgs); err != nil {
 		return config.Config{}, false, false, err
 	}
 	if flags.NArg() != 0 {
@@ -183,6 +200,13 @@ func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
 		return config.Config{}, false, false, fmt.Errorf("--mono and --stereo conflict")
 	}
 	cfg.Force = *rf.force
+	if autoOutput {
+		if cfg.Force {
+			cfg.Output = cfg.Input
+		} else {
+			cfg.Output = defaultOutput(cfg.Input)
+		}
+	}
 	cfg.Verbose = *rf.verbose
 	cfg.VideoCodec = config.VideoCodec(strings.ToLower(*rf.codec))
 	cfg.HEVCCodecTag = config.HEVCCodecTag(strings.ToLower(*rf.hevcTag))

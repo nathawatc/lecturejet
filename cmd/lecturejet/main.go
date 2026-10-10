@@ -41,7 +41,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return nil
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: lecturejet input.mp4 output.mp4 [options] or lecturejet analyze input.mp4")
+		return fmt.Errorf("usage: lecturejet input.mp4 [output.mp4] [options] or lecturejet analyze input.mp4")
 	}
 	if args[0] == "analyze" {
 		return runAnalyze(args[1:], stdout, stderr)

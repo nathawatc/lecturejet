@@ -25,6 +25,93 @@ func TestParseRenderFlags(t *testing.T) {
 	}
 }
 
+func TestDefaultOutput(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"input.mp4", "input.out.mp4"},
+		{"lecture.2024.mp4", "lecture.2024.out.mp4"},
+		{"/path/to/video.mp4", "/path/to/video.out.mp4"},
+		{"./video.mp4", "./video.out.mp4"},
+		{"video.MP4", "video.out.MP4"},
+		{"video", "video.out"},
+		{".hidden.mp4", ".hidden.out.mp4"},
+	}
+	for _, tc := range tests {
+		if got := defaultOutput(tc.input); got != tc.want {
+			t.Errorf("defaultOutput(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestParseRenderAutomaticOutput(t *testing.T) {
+	t.Run("input only", func(t *testing.T) {
+		cfg, _, _, err := parseRenderArgs([]string{"input.mp4"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Input != "input.mp4" || cfg.Output != "input.out.mp4" {
+			t.Fatalf("expected input=input.mp4, output=input.out.mp4, got %+v", cfg)
+		}
+	})
+
+	t.Run("input with flags without force", func(t *testing.T) {
+		cfg, _, explicit, err := parseRenderArgs([]string{
+			"input.mp4", "--video-codec", "h264",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Input != "input.mp4" || cfg.Output != "input.out.mp4" {
+			t.Fatalf("expected automatic .out output, got %+v", cfg)
+		}
+		if cfg.Force || cfg.VideoCodec != config.VideoH264 || !explicit {
+			t.Fatalf("expected no force and explicit h264, got %+v explicit=%v", cfg, explicit)
+		}
+	})
+
+	t.Run("input with force overrides current file", func(t *testing.T) {
+		cfg, _, _, err := parseRenderArgs([]string{
+			"input.mp4", "--force",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Input != "input.mp4" || cfg.Output != "input.mp4" {
+			t.Fatalf("expected output=input.mp4 to override current file, got %+v", cfg)
+		}
+		if !cfg.Force {
+			t.Fatalf("expected force=true, got %+v", cfg)
+		}
+	})
+
+	t.Run("input with force=false uses .out", func(t *testing.T) {
+		cfg, _, _, err := parseRenderArgs([]string{
+			"input.mp4", "--force=false",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Input != "input.mp4" || cfg.Output != "input.out.mp4" {
+			t.Fatalf("expected output=input.out.mp4 when force=false, got %+v", cfg)
+		}
+		if cfg.Force {
+			t.Fatalf("expected force=false, got %+v", cfg)
+		}
+	})
+
+	t.Run("explicit output preserved", func(t *testing.T) {
+		cfg, _, _, err := parseRenderArgs([]string{"input.mp4", "custom.mp4", "--force"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if cfg.Input != "input.mp4" || cfg.Output != "custom.mp4" || !cfg.Force {
+			t.Fatalf("expected explicit output and force, got %+v", cfg)
+		}
+	})
+}
+
 func TestParseRenderForceFlag(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -241,7 +328,7 @@ func TestTopLevelHelp(t *testing.T) {
 			if !strings.Contains(out, "Usage:") {
 				t.Fatalf("expected Usage: in stdout, got:\n%s", out)
 			}
-			if !strings.Contains(out, "lecturejet <input.mp4> <output.mp4> [options]") {
+			if !strings.Contains(out, "lecturejet <input.mp4> [output.mp4] [options]") {
 				t.Fatalf("expected render invocation in stdout, got:\n%s", out)
 			}
 			if !strings.Contains(out, "analyze") {
@@ -436,6 +523,11 @@ func TestFlagErrHelpHandling(t *testing.T) {
 	_, _, _, err := parseRenderArgs([]string{"input.mp4", "output.mp4", "--help"})
 	if !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("expected flag.ErrHelp from parseRenderArgs, got: %v", err)
+	}
+
+	_, _, _, err = parseRenderArgs([]string{"input.mp4", "--help"})
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("expected flag.ErrHelp from parseRenderArgs without output, got: %v", err)
 	}
 
 	_, err = parseAnalyzeArgs([]string{"input.mp4", "--help"})
