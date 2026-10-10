@@ -26,8 +26,9 @@ Guidelines for FFmpeg C code and CGO bridge. Back to [AGENTS.md](../AGENTS.md).
   Hardware decoded frames pass directly to the VAAPI encoder on GPU VRAM.
 - **Strict Configuration**: Fail with diagnostics if an explicitly requested
   VAAPI device or codec is unsupported; never fall back silently.
-- **Lossless HEVC Remux**: Produce `hvc1` tagged HEVC output through stream-copy
-  remux (`lj_remux_hevc_hvc1`); do not re-encode solely to modify fourcc tag.
+- **HEVC Codec Tags**: Tag HEVC streams as `hev1` or `hvc1` directly during
+  render (`codecpar->codec_tag`), avoiding secondary remux passes. Stream-copy
+  remux (`lj_remux_hevc_hvc1`) remains available for standalone retagging.
 
 ## Cancellation & Concurrency
 

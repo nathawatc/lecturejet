@@ -175,11 +175,10 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 		return fmt.Errorf("creating temporary output: %w", err)
 	}
 	defer os.Remove(temporaryPath)
-	wantHVC1 := cfg.VideoCodec == config.VideoHEVC && cfg.HEVCCodecTag == config.HEVCCodecTagHVC1
 	codec := media.VAAPIEncoderName(cfg.VideoCodec)
 	videoTag := ""
 	if cfg.VideoCodec == config.VideoHEVC {
-		videoTag = string(config.HEVCCodecTagHEV1)
+		videoTag = string(cfg.HEVCCodecTag)
 	}
 	err = media.Render(ctx, cfg.Input, temporaryPath, result.Timeline, media.RenderOptions{
 		VideoCodec: codec, VideoTag: videoTag, VAAPIDevice: result.VAAPIDevice, OutputMono: cfg.Audio.Mono,
@@ -187,9 +186,6 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 		Threads: cfg.Threads,
 	}, func(percent int) {
 		if status != nil {
-			if wantHVC1 && percent > 95 {
-				percent = 95
-			}
 			fmt.Fprintf(status, "\rRendering %s VAAPI... %d%%", strings.ToUpper(string(cfg.VideoCodec)), percent)
 		}
 	})
@@ -199,22 +195,7 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	finalPath := temporaryPath
-	if wantHVC1 {
-		remuxPath, remuxErr := createTemporaryOutput(directory, base)
-		if remuxErr != nil {
-			return fmt.Errorf("creating temporary remux output: %w", remuxErr)
-		}
-		defer os.Remove(remuxPath)
-		if err := media.RemuxHEVCHVC1(ctx, temporaryPath, remuxPath); err != nil {
-			return err
-		}
-		finalPath = remuxPath
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := Publish(finalPath, cfg.Output, cfg.Force); err != nil {
+	if err := Publish(temporaryPath, cfg.Output, cfg.Force); err != nil {
 		return err
 	}
 	if status != nil {

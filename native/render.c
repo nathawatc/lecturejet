@@ -299,8 +299,8 @@ static int lj_open_video_encoder(LJRenderState *state, const LJRenderOptions *op
 				"unsupported HEVC codec tag '%s': choose hev1 or hvc1", tag);
 			return AVERROR(EINVAL);
 		}
-		// HEVC VAAPI output is finalized as hvc1 only by the stream-copy remux.
-		state->video_stream->codecpar->codec_tag = lj_fourcc("hev1");
+		state->video_stream->codecpar->codec_tag =
+			strcmp(tag, "hvc1") == 0 ? MKTAG('h', 'v', 'c', '1') : MKTAG('h', 'e', 'v', '1');
 	}
 	state->video_stream->time_base = state->video_encoder->time_base;
 	return 0;

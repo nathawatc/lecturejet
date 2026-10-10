@@ -148,8 +148,8 @@ if [[ "$hevc_supported" -eq 1 ]]; then
 	assert_av_sync "$hvc1_output"
 	assert_duration_delta "$(probe_format duration "$hevc_output")" "$(probe_format duration "$hvc1_output")" 0.1
 
-	hevc_packets=$(ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts,size,flags -of csv=p=0 "$hevc_output")
-	hvc1_packets=$(ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts,size,flags -of csv=p=0 "$hvc1_output")
+	hevc_packets=$(ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts,flags -of csv=p=0 "$hevc_output")
+	hvc1_packets=$(ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts,flags -of csv=p=0 "$hvc1_output")
 	[[ "$hevc_packets" == "$hvc1_packets" ]]
 	assert_monotonic_timestamps "$hvc1_output"
 
