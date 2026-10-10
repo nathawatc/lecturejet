@@ -561,6 +561,8 @@ static int lj_render_video(LJRenderState *state, const char *input,
 		? av_rescale_q(1, (AVRational){fps.den, fps.num},
 				(AVRational){1, 1000000000})
 		: 33333333;
+	int64_t pre_roll_target_ns = -1;
+	int eof_reached = 0;
 	for (;;) {
 		ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
 		if (ret < 0)
@@ -599,21 +601,64 @@ static int lj_render_video(LJRenderState *state, const char *input,
 			lj_report_progress(progress,
 				50 + (int)av_rescale(source_ns, 50, timeline->source_end),
 				last_progress);
+			if (pre_roll_target_ns >= 0) {
+				if (source_ns < pre_roll_target_ns) {
+					av_frame_unref(frame);
+					continue;
+				}
+				pre_roll_target_ns = -1;
+			}
 			size_t index = 0;
-			if (lj_timeline_lookup_ns(timeline, source_ns, &index) &&
-				timeline->segments[index].action == 0) {
-				int64_t output_ns = lj_timeline_map_ns(timeline, index, source_ns);
-				int64_t output_pts = av_rescale_q(output_ns, (AVRational){1, 1000000000},
-					state->video_encoder->time_base);
-				if (state->last_video_pts != AV_NOPTS_VALUE && output_pts <= state->last_video_pts)
-					output_pts = state->last_video_pts + 1;
-				ret = lj_encode_video_frame(state, frame, output_pts);
-				if (ret < 0)
-					goto fail;
-				state->last_video_pts = output_pts;
+			if (lj_timeline_lookup_ns(timeline, source_ns, &index)) {
+				if (timeline->segments[index].action == 0) {
+					int64_t output_ns = lj_timeline_map_ns(timeline, index, source_ns);
+					int64_t output_pts = av_rescale_q(output_ns, (AVRational){1, 1000000000},
+						state->video_encoder->time_base);
+					if (state->last_video_pts != AV_NOPTS_VALUE && output_pts <= state->last_video_pts)
+						output_pts = state->last_video_pts + 1;
+					ret = lj_encode_video_frame(state, frame, output_pts);
+					if (ret < 0)
+						goto fail;
+					state->last_video_pts = output_pts;
+				} else {
+					size_t next_keep = 0;
+					if (!lj_timeline_next_keep(timeline, index, &next_keep)) {
+						av_log(format, AV_LOG_INFO,
+							"Trailing silence to EOF (%.2fs); ending video demux\n",
+							(double)(timeline->source_end - source_ns) / 1000000000.0);
+						av_frame_unref(frame);
+						eof_reached = 1;
+						break;
+					}
+					int64_t target_ns = timeline->segments[next_keep].start_ns;
+					int64_t gap_ns = target_ns - source_ns;
+					if (gap_ns >= LJ_MIN_SEEK_SILENCE_NS) {
+						int64_t target_pts = av_rescale_q(target_ns, (AVRational){1, 1000000000},
+							format->streams[stream_index]->time_base);
+						av_log(format, AV_LOG_INFO,
+							"Seeking over %.2fs silence to target PTS %" PRId64 " (%.2fs)\n",
+							(double)gap_ns / 1000000000.0, target_pts, (double)target_ns / 1000000000.0);
+						int seek_ret = av_seek_frame(format, stream_index, target_pts,
+							AVSEEK_FLAG_BACKWARD);
+						if (seek_ret < 0) {
+							av_log(format, AV_LOG_WARNING,
+								"Seek to target PTS %" PRId64 " failed (%d); continuing linear decode\n",
+								target_pts, seek_ret);
+						} else {
+							avcodec_flush_buffers(decoder);
+							pre_roll_target_ns = target_ns;
+							fallback_ns = target_ns;
+							timeline->cursor = next_keep;
+							av_frame_unref(frame);
+							break;
+						}
+					}
+				}
 			}
 			av_frame_unref(frame);
 		}
+		if (eof_reached)
+			break;
 	}
 	ret = avcodec_send_packet(decoder, NULL);
 	if (ret < 0 && ret != AVERROR_EOF)
@@ -638,6 +683,13 @@ static int lj_render_video(LJRenderState *state, const char *input,
 		lj_report_progress(progress,
 			50 + (int)av_rescale(source_ns, 50, timeline->source_end),
 			last_progress);
+		if (pre_roll_target_ns >= 0) {
+			if (source_ns < pre_roll_target_ns) {
+				av_frame_unref(frame);
+				continue;
+			}
+			pre_roll_target_ns = -1;
+		}
 		size_t index = 0;
 		if (lj_timeline_lookup_ns(timeline, source_ns, &index) &&
 			timeline->segments[index].action == 0) {

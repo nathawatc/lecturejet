@@ -29,6 +29,9 @@ Guidelines for FFmpeg C code and CGO bridge. Back to [AGENTS.md](../AGENTS.md).
 - **HEVC Codec Tags**: Tag HEVC streams as `hev1` or `hvc1` directly during
   render (`codecpar->codec_tag`), avoiding secondary remux passes. Stream-copy
   remux (`lj_remux_hevc_hvc1`) remains available for standalone retagging.
+- **Keyframe Seeking Over Silence**: On silent gaps >= 3.0 seconds, seek backward
+  to the keyframe before the next speech segment and discard pre-roll frames,
+  bypassing full linear decode. Short gaps (< 3.0s) remain linearly decoded.
 
 ## Cancellation & Concurrency
 

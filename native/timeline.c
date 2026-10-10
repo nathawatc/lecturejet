@@ -84,3 +84,17 @@ int64_t lj_timeline_map_ns(const LJTimelineView *view, size_t index, int64_t sou
 		return view->output_start[index];
 	return view->output_start[index] + source_ns - segment->start_ns;
 }
+
+int lj_timeline_next_keep(const LJTimelineView *view, size_t from_index, size_t *next_keep_index)
+{
+	if (!view)
+		return 0;
+	for (size_t i = from_index + 1; i < view->count; ++i) {
+		if (view->segments[i].action == 0) {
+			if (next_keep_index)
+				*next_keep_index = i;
+			return 1;
+		}
+	}
+	return 0;
+}

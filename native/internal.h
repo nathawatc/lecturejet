@@ -27,6 +27,8 @@
 #include <libswscale/swscale.h>
 
 #define LJ_DEFAULT_VIDEO_QP 28
+#define LJ_MIN_SEEK_SILENCE_SEC 3.0
+#define LJ_MIN_SEEK_SILENCE_NS ((int64_t)(LJ_MIN_SEEK_SILENCE_SEC * 1000000000.0))
 
 struct LJCancelToken {
 	int cancelled;
@@ -59,5 +61,6 @@ int lj_timeline_init(LJTimelineView *view, const LJSegment *segments, size_t cou
 int lj_timeline_lookup_ns(LJTimelineView *view, int64_t source_ns, size_t *index);
 int lj_timeline_lookup_sample(LJTimelineView *view, int64_t sample, size_t *index);
 int64_t lj_timeline_map_ns(const LJTimelineView *view, size_t index, int64_t source_ns);
+int lj_timeline_next_keep(const LJTimelineView *view, size_t from_index, size_t *next_keep_index);
 
 #endif
