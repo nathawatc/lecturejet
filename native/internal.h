@@ -63,4 +63,12 @@ int lj_timeline_lookup_sample(LJTimelineView *view, int64_t sample, size_t *inde
 int64_t lj_timeline_map_ns(const LJTimelineView *view, size_t index, int64_t source_ns);
 int lj_timeline_next_keep(const LJTimelineView *view, size_t from_index, size_t *next_keep_index);
 
+LJAudioDecoder *lj_audio_open_stream(const AVStream *stream, int output_channels,
+	LJCancelToken *cancel,
+	int rnnoise_enabled, double rnnoise_strength,
+	const char *rnnoise_model, char *error, size_t error_size);
+int lj_audio_send_packet(LJAudioDecoder *decoder, const AVPacket *packet);
+int lj_audio_flush(LJAudioDecoder *decoder);
+void lj_audio_seek_reset(LJAudioDecoder *decoder, int64_t target_sample);
+
 #endif

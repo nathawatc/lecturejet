@@ -401,56 +401,37 @@ static int lj_encode_video_frame(LJRenderState *state, AVFrame *decoded,
 	return ret;
 }
 
-static int lj_render_audio(LJRenderState *state, const char *input,
-	const LJRenderOptions *options, LJTimelineView *timeline,
-	LJProgressCallback progress, int *last_progress)
+static int lj_process_audio_samples(LJRenderState *state, LJAudioDecoder *audio_decoder,
+	LJTimelineView *timeline, float *audio_samples, int audio_channels,
+	int64_t *audio_pre_roll_sample)
 {
-	int cancel_ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
-	if (cancel_ret < 0)
-		return cancel_ret;
-	LJAudioDecoder *decoder = lj_audio_open(input, options->output_mono ? 1 : 2,
-		state->cancel,
-		options->rnnoise_enabled,
-		options->rnnoise_strength,
-		options->rnnoise_model, state->error,
-		sizeof(state->error));
-	if (!decoder)
-		return AVERROR_EXTERNAL;
-	int channels = options->output_mono ? 1 : 2;
-	float *samples = malloc((size_t)8192 * channels * sizeof(float));
-	if (!samples) {
-		lj_audio_close(&decoder);
-		return AVERROR(ENOMEM);
-	}
-	int64_t source_sample = 0;
-	int ret = 0;
 	for (;;) {
-		cancel_ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
-		if (cancel_ret < 0) {
-			ret = cancel_ret;
-			break;
-		}
+		int cancel_ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
+		if (cancel_ret < 0)
+			return cancel_ret;
 		int64_t block_start = 0;
-		int frames = lj_audio_read(decoder, samples, 8192, &block_start,
-			state->error, sizeof(state->error));
-		if (frames < 0) {
-			ret = AVERROR_EXTERNAL;
-			break;
-		}
+		int frames = lj_audio_read(audio_decoder, audio_samples, 8192,
+			&block_start, state->error, sizeof(state->error));
+		if (frames < 0)
+			return AVERROR_EXTERNAL;
 		if (frames == 0)
 			break;
-		source_sample = block_start;
-		int64_t source_samples = timeline->sample_end[timeline->count - 1];
-		if (source_samples > 0)
-			lj_report_progress(progress, (int)av_rescale(source_sample, 50, source_samples),
-				last_progress);
+		int64_t source_sample = block_start;
 		int offset = 0;
 		while (offset < frames) {
-			cancel_ret = lj_abort_if_cancelled(state->cancel, state->error,
-				sizeof(state->error));
-			if (cancel_ret < 0) {
-				ret = cancel_ret;
-				break;
+			cancel_ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
+			if (cancel_ret < 0)
+				return cancel_ret;
+			if (*audio_pre_roll_sample >= 0) {
+				if (source_sample < *audio_pre_roll_sample) {
+					int skip = (int)(*audio_pre_roll_sample - source_sample);
+					if (skip > frames - offset)
+						skip = frames - offset;
+					offset += skip;
+					source_sample += skip;
+					continue;
+				}
+				*audio_pre_roll_sample = -1;
 			}
 			size_t index = 0;
 			if (!lj_timeline_lookup_sample(timeline, source_sample, &index)) {
@@ -472,28 +453,18 @@ static int lj_render_audio(LJRenderState *state, const char *input,
 			if (take > frames - offset)
 				take = frames - offset;
 			if (timeline->segments[index].action == 0) {
-				ret = lj_audio_fifo_append(state,
-					samples + (size_t)offset * channels, (size_t)take);
+				int ret = lj_audio_fifo_append(state,
+					audio_samples + (size_t)offset * audio_channels, (size_t)take);
 				if (ret >= 0)
 					ret = lj_encode_audio_available(state, 0);
-			}
-			if (ret < 0) {
-				offset = frames;
-				break;
+				if (ret < 0)
+					return ret;
 			}
 			offset += take;
 			source_sample += take;
 		}
-		if (ret < 0)
-			break;
 	}
-	if (ret >= 0)
-		ret = lj_encode_audio_available(state, 1);
-	if (ret >= 0)
-		ret = lj_drain_audio_encoder(state);
-	free(samples);
-	lj_audio_close(&decoder);
-	return ret;
+	return 0;
 }
 
 static enum AVPixelFormat lj_get_hw_format(AVCodecContext *ctx,
@@ -506,247 +477,6 @@ static enum AVPixelFormat lj_get_hw_format(AVCodecContext *ctx,
 			return AV_PIX_FMT_VAAPI;
 	}
 	return pix_fmts[0];
-}
-
-static int lj_render_video(LJRenderState *state, const char *input,
-	const LJRenderOptions *options,
-	LJTimelineView *timeline, LJProgressCallback progress,
-	int *last_progress)
-{
-	AVFormatContext *format = NULL;
-	AVCodecContext *decoder = NULL;
-	AVPacket *packet = NULL;
-	AVFrame *frame = NULL;
-	int ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
-	if (ret < 0)
-		goto fail;
-	format = avformat_alloc_context();
-	if (!format) {
-		ret = AVERROR(ENOMEM);
-		goto fail;
-	}
-	lj_set_interrupt_callback(format, state->cancel);
-	ret = avformat_open_input(&format, input, NULL, NULL);
-	if (ret < 0)
-		goto fail;
-	ret = avformat_find_stream_info(format, NULL);
-	if (ret < 0)
-		goto fail;
-	const AVCodec *decoder_codec = NULL;
-	int stream_index = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, -1,
-		&decoder_codec, 0);
-	if (stream_index < 0) {
-		ret = AVERROR_STREAM_NOT_FOUND;
-		goto fail;
-	}
-	decoder = avcodec_alloc_context3(decoder_codec);
-	if (!decoder) {
-		ret = AVERROR(ENOMEM);
-		goto fail;
-	}
-	ret = avcodec_parameters_to_context(decoder,
-		format->streams[stream_index]->codecpar);
-	if (ret < 0)
-		goto fail;
-	decoder->pkt_timebase = format->streams[stream_index]->time_base;
-	decoder->thread_count = options->threads > 0 ? options->threads : 0;
-	decoder->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
-	if (state->vaapi_device) {
-		decoder->hw_device_ctx = av_buffer_ref(state->vaapi_device);
-		decoder->get_format = lj_get_hw_format;
-	}
-	ret = avcodec_open2(decoder, decoder_codec, NULL);
-	if (ret < 0 && state->vaapi_device) {
-		avcodec_free_context(&decoder);
-		decoder = avcodec_alloc_context3(decoder_codec);
-		if (!decoder) {
-			ret = AVERROR(ENOMEM);
-			goto fail;
-		}
-		ret = avcodec_parameters_to_context(decoder,
-			format->streams[stream_index]->codecpar);
-		if (ret < 0)
-			goto fail;
-		decoder->pkt_timebase = format->streams[stream_index]->time_base;
-		decoder->thread_count = options->threads > 0 ? options->threads : 0;
-		decoder->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
-		ret = avcodec_open2(decoder, decoder_codec, NULL);
-	}
-	if (ret < 0)
-		goto fail;
-	packet = av_packet_alloc();
-	frame = av_frame_alloc();
-	if (!packet || !frame) {
-		ret = AVERROR(ENOMEM);
-		goto fail;
-	}
-	AVRational fps = av_guess_frame_rate(format, format->streams[stream_index], NULL);
-	int64_t fallback_ns = 0;
-	int64_t frame_duration_ns = fps.num > 0 && fps.den > 0
-		? av_rescale_q(1, (AVRational){fps.den, fps.num},
-				(AVRational){1, 1000000000})
-		: 33333333;
-	int64_t pre_roll_target_ns = -1;
-	int eof_reached = 0;
-	for (;;) {
-		ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
-		if (ret < 0)
-			goto fail;
-		ret = av_read_frame(format, packet);
-		if (ret == AVERROR_EOF)
-			break;
-		if (ret < 0)
-			goto fail;
-		if (packet->stream_index != stream_index) {
-			av_packet_unref(packet);
-			continue;
-		}
-		ret = avcodec_send_packet(decoder, packet);
-		av_packet_unref(packet);
-		if (ret < 0)
-			goto fail;
-		for (;;) {
-			ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
-			if (ret < 0)
-				goto fail;
-			ret = avcodec_receive_frame(decoder, frame);
-			if (ret == AVERROR(EAGAIN))
-				break;
-			if (ret < 0)
-				goto fail;
-			int64_t source_pts = frame->best_effort_timestamp;
-			int64_t source_ns;
-			if (source_pts == AV_NOPTS_VALUE) {
-				source_ns = fallback_ns;
-			} else {
-				source_ns = av_rescale_q(source_pts, format->streams[stream_index]->time_base,
-					(AVRational){1, 1000000000});
-			}
-			fallback_ns = source_ns + frame_duration_ns;
-			lj_report_progress(progress,
-				50 + (int)av_rescale(source_ns, 50, timeline->source_end),
-				last_progress);
-			if (pre_roll_target_ns >= 0) {
-				if (source_ns < pre_roll_target_ns) {
-					av_frame_unref(frame);
-					continue;
-				}
-				pre_roll_target_ns = -1;
-			}
-			size_t index = 0;
-			if (lj_timeline_lookup_ns(timeline, source_ns, &index)) {
-				if (timeline->segments[index].action == 0) {
-					int64_t output_ns = lj_timeline_map_ns(timeline, index, source_ns);
-					int64_t output_pts = av_rescale_q(output_ns, (AVRational){1, 1000000000},
-						state->video_encoder->time_base);
-					if (state->last_video_pts != AV_NOPTS_VALUE && output_pts <= state->last_video_pts)
-						output_pts = state->last_video_pts + 1;
-					ret = lj_encode_video_frame(state, frame, output_pts);
-					if (ret < 0)
-						goto fail;
-					state->last_video_pts = output_pts;
-				} else {
-					size_t next_keep = 0;
-					if (!lj_timeline_next_keep(timeline, index, &next_keep)) {
-						av_log(format, AV_LOG_INFO,
-							"Trailing silence to EOF (%.2fs); ending video demux\n",
-							(double)(timeline->source_end - source_ns) / 1000000000.0);
-						av_frame_unref(frame);
-						eof_reached = 1;
-						break;
-					}
-					int64_t target_ns = timeline->segments[next_keep].start_ns;
-					int64_t gap_ns = target_ns - source_ns;
-					if (gap_ns >= LJ_MIN_SEEK_SILENCE_NS) {
-						int64_t target_pts = av_rescale_q(target_ns, (AVRational){1, 1000000000},
-							format->streams[stream_index]->time_base);
-						av_log(format, AV_LOG_INFO,
-							"Seeking over %.2fs silence to target PTS %" PRId64 " (%.2fs)\n",
-							(double)gap_ns / 1000000000.0, target_pts, (double)target_ns / 1000000000.0);
-						int seek_ret = av_seek_frame(format, stream_index, target_pts,
-							AVSEEK_FLAG_BACKWARD);
-						if (seek_ret < 0) {
-							av_log(format, AV_LOG_WARNING,
-								"Seek to target PTS %" PRId64 " failed (%d); continuing linear decode\n",
-								target_pts, seek_ret);
-						} else {
-							avcodec_flush_buffers(decoder);
-							pre_roll_target_ns = target_ns;
-							fallback_ns = target_ns;
-							timeline->cursor = next_keep;
-							av_frame_unref(frame);
-							break;
-						}
-					}
-				}
-			}
-			av_frame_unref(frame);
-		}
-		if (eof_reached)
-			break;
-	}
-	ret = avcodec_send_packet(decoder, NULL);
-	if (ret < 0 && ret != AVERROR_EOF)
-		goto fail;
-	for (;;) {
-		ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
-		if (ret < 0)
-			goto fail;
-		ret = avcodec_receive_frame(decoder, frame);
-		if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
-			ret = 0;
-			break;
-		}
-		if (ret < 0)
-			goto fail;
-		int64_t source_pts = frame->best_effort_timestamp;
-		int64_t source_ns = source_pts == AV_NOPTS_VALUE
-			? fallback_ns
-			: av_rescale_q(source_pts, format->streams[stream_index]->time_base,
-					(AVRational){1, 1000000000});
-		fallback_ns = source_ns + frame_duration_ns;
-		lj_report_progress(progress,
-			50 + (int)av_rescale(source_ns, 50, timeline->source_end),
-			last_progress);
-		if (pre_roll_target_ns >= 0) {
-			if (source_ns < pre_roll_target_ns) {
-				av_frame_unref(frame);
-				continue;
-			}
-			pre_roll_target_ns = -1;
-		}
-		size_t index = 0;
-		if (lj_timeline_lookup_ns(timeline, source_ns, &index) &&
-			timeline->segments[index].action == 0) {
-			int64_t output_ns = lj_timeline_map_ns(timeline, index, source_ns);
-			int64_t output_pts = av_rescale_q(output_ns, (AVRational){1, 1000000000},
-				state->video_encoder->time_base);
-			if (state->last_video_pts != AV_NOPTS_VALUE && output_pts <= state->last_video_pts)
-				output_pts = state->last_video_pts + 1;
-			ret = lj_encode_video_frame(state, frame, output_pts);
-			if (ret < 0)
-				goto fail;
-			state->last_video_pts = output_pts;
-		}
-		av_frame_unref(frame);
-	}
-	ret = avcodec_send_frame(state->video_encoder, NULL);
-	if (ret < 0 && ret != AVERROR_EOF)
-		goto fail;
-	ret = lj_drain_video(state);
-
-fail:
-	if (ret < 0 && !state->error[0]) {
-		if (lj_cancel_requested(state->cancel))
-			lj_error(state->error, sizeof(state->error), "operation cancelled");
-		else
-			lj_fferror(state->error, sizeof(state->error), "rendering video", ret);
-	}
-	av_frame_free(&frame);
-	av_packet_free(&packet);
-	avcodec_free_context(&decoder);
-	avformat_close_input(&format);
-	return ret;
 }
 
 int lj_render_file(const char *input, const char *output,
@@ -769,6 +499,14 @@ int lj_render_file(const char *input, const char *output,
 	LJTimelineView timeline;
 	memset(&timeline, 0, sizeof(timeline));
 	int ret = 0;
+
+	AVFormatContext *input_format = NULL;
+	AVCodecContext *video_decoder = NULL;
+	LJAudioDecoder *audio_decoder = NULL;
+	AVPacket *demux_packet = NULL;
+	AVFrame *video_frame = NULL;
+	float *audio_samples = NULL;
+
 	ret = lj_abort_if_cancelled(state.cancel, state.error, sizeof(state.error));
 	if (ret < 0)
 		goto done;
@@ -786,8 +524,8 @@ int lj_render_file(const char *input, const char *output,
 		goto done;
 	}
 	lj_set_interrupt_callback(state.output, state.cancel);
-	// Open input to inspect streams and configure encoders before writing header.
-	AVFormatContext *input_format = avformat_alloc_context();
+
+	input_format = avformat_alloc_context();
 	if (!input_format) {
 		ret = AVERROR(ENOMEM);
 		goto done;
@@ -797,31 +535,95 @@ int lj_render_file(const char *input, const char *output,
 	if (ret < 0)
 		goto done;
 	ret = avformat_find_stream_info(input_format, NULL);
-	if (ret < 0) {
-		avformat_close_input(&input_format);
+	if (ret < 0)
 		goto done;
-	}
+
 	int video_index = av_find_best_stream(input_format, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
 	if (video_index < 0) {
-		avformat_close_input(&input_format);
 		lj_error(state.error, sizeof(state.error), "rendering: input has no video stream");
 		ret = AVERROR_STREAM_NOT_FOUND;
 		goto done;
 	}
-	int has_audio = av_find_best_stream(input_format, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0) >= 0;
+	int audio_index = av_find_best_stream(input_format, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+	int has_audio = (audio_index >= 0);
+
 	int vid_w = input_format->streams[video_index]->codecpar->width;
 	int vid_h = input_format->streams[video_index]->codecpar->height;
 	AVRational vid_fps = av_guess_frame_rate(input_format, input_format->streams[video_index], NULL);
-	avformat_close_input(&input_format);
 
 	ret = lj_open_video_encoder(&state, options, vid_w, vid_h, vid_fps);
 	if (ret < 0)
 		goto done;
+
+	int audio_channels = options->output_mono ? 1 : 2;
 	if (has_audio) {
-		ret = lj_open_audio_encoder(&state, options->output_mono ? 1 : 2);
+		ret = lj_open_audio_encoder(&state, audio_channels);
 		if (ret < 0)
 			goto done;
 	}
+
+	const AVCodec *decoder_codec = avcodec_find_decoder(
+		input_format->streams[video_index]->codecpar->codec_id);
+	if (!decoder_codec) {
+		ret = AVERROR_DECODER_NOT_FOUND;
+		goto done;
+	}
+	video_decoder = avcodec_alloc_context3(decoder_codec);
+	if (!video_decoder) {
+		ret = AVERROR(ENOMEM);
+		goto done;
+	}
+	ret = avcodec_parameters_to_context(video_decoder,
+		input_format->streams[video_index]->codecpar);
+	if (ret < 0) {
+		avcodec_free_context(&video_decoder);
+		goto done;
+	}
+	video_decoder->pkt_timebase = input_format->streams[video_index]->time_base;
+	video_decoder->thread_count = options->threads > 0 ? options->threads : 0;
+	video_decoder->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+	if (state.vaapi_device) {
+		video_decoder->hw_device_ctx = av_buffer_ref(state.vaapi_device);
+		video_decoder->get_format = lj_get_hw_format;
+	}
+	ret = avcodec_open2(video_decoder, decoder_codec, NULL);
+	if (ret < 0 && state.vaapi_device) {
+		avcodec_free_context(&video_decoder);
+		video_decoder = avcodec_alloc_context3(decoder_codec);
+		if (!video_decoder) {
+			ret = AVERROR(ENOMEM);
+			goto done;
+		}
+		ret = avcodec_parameters_to_context(video_decoder,
+			input_format->streams[video_index]->codecpar);
+		if (ret < 0) {
+			avcodec_free_context(&video_decoder);
+			goto done;
+		}
+		video_decoder->pkt_timebase = input_format->streams[video_index]->time_base;
+		video_decoder->thread_count = options->threads > 0 ? options->threads : 0;
+		video_decoder->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+		ret = avcodec_open2(video_decoder, decoder_codec, NULL);
+	}
+	if (ret < 0)
+		goto done;
+
+	if (has_audio) {
+		audio_decoder = lj_audio_open_stream(input_format->streams[audio_index],
+			audio_channels, state.cancel, options->rnnoise_enabled,
+			options->rnnoise_strength, options->rnnoise_model,
+			state.error, sizeof(state.error));
+		if (!audio_decoder) {
+			ret = AVERROR_EXTERNAL;
+			goto done;
+		}
+		audio_samples = malloc((size_t)8192 * audio_channels * sizeof(float));
+		if (!audio_samples) {
+			ret = AVERROR(ENOMEM);
+			goto done;
+		}
+	}
+
 	if (!(state.output->oformat->flags & AVFMT_NOFILE)) {
 		ret = avio_open2(&state.output->pb, output, AVIO_FLAG_WRITE,
 			&state.output->interrupt_callback, NULL);
@@ -834,23 +636,221 @@ int lj_render_file(const char *input, const char *output,
 	ret = avformat_write_header(state.output, NULL);
 	if (ret < 0)
 		goto done;
-	if (has_audio) {
-		ret = lj_render_audio(&state, input, options, &timeline, progress, &last_progress);
+
+	demux_packet = av_packet_alloc();
+	video_frame = av_frame_alloc();
+	if (!demux_packet || !video_frame) {
+		ret = AVERROR(ENOMEM);
+		goto done;
+	}
+
+	int64_t fallback_ns = 0;
+	int64_t frame_duration_ns = vid_fps.num > 0 && vid_fps.den > 0
+		? av_rescale_q(1, (AVRational){vid_fps.den, vid_fps.num},
+				(AVRational){1, 1000000000})
+		: 33333333;
+	int64_t pre_roll_target_ns = -1;
+	int64_t audio_pre_roll_sample = -1;
+	int eof_reached = 0;
+
+	for (;;) {
+		ret = lj_abort_if_cancelled(state.cancel, state.error, sizeof(state.error));
 		if (ret < 0)
 			goto done;
-	} else {
-		lj_report_progress(progress, 50, &last_progress);
+		ret = av_read_frame(input_format, demux_packet);
+		if (ret == AVERROR_EOF) {
+			ret = 0;
+			break;
+		}
+		if (ret < 0)
+			goto done;
+
+		if (demux_packet->stream_index == video_index) {
+			ret = avcodec_send_packet(video_decoder, demux_packet);
+			av_packet_unref(demux_packet);
+			if (ret < 0)
+				goto done;
+			for (;;) {
+				ret = lj_abort_if_cancelled(state.cancel, state.error, sizeof(state.error));
+				if (ret < 0)
+					goto done;
+				ret = avcodec_receive_frame(video_decoder, video_frame);
+				if (ret == AVERROR(EAGAIN)) {
+					ret = 0;
+					break;
+				}
+				if (ret < 0)
+					goto done;
+				int64_t source_pts = video_frame->best_effort_timestamp;
+				int64_t source_ns;
+				if (source_pts == AV_NOPTS_VALUE) {
+					source_ns = fallback_ns;
+				} else {
+					source_ns = av_rescale_q(source_pts, input_format->streams[video_index]->time_base,
+						(AVRational){1, 1000000000});
+				}
+				fallback_ns = source_ns + frame_duration_ns;
+				lj_report_progress(progress,
+					(int)av_rescale(source_ns, 100, timeline.source_end),
+					&last_progress);
+				if (pre_roll_target_ns >= 0) {
+					if (source_ns < pre_roll_target_ns) {
+						av_frame_unref(video_frame);
+						continue;
+					}
+					pre_roll_target_ns = -1;
+				}
+				size_t index = 0;
+				if (lj_timeline_lookup_ns(&timeline, source_ns, &index)) {
+					if (timeline.segments[index].action == 0) {
+						int64_t output_ns = lj_timeline_map_ns(&timeline, index, source_ns);
+						int64_t output_pts = av_rescale_q(output_ns, (AVRational){1, 1000000000},
+							state.video_encoder->time_base);
+						if (state.last_video_pts != AV_NOPTS_VALUE && output_pts <= state.last_video_pts)
+							output_pts = state.last_video_pts + 1;
+						ret = lj_encode_video_frame(&state, video_frame, output_pts);
+						if (ret < 0) {
+							av_frame_unref(video_frame);
+							goto done;
+						}
+						state.last_video_pts = output_pts;
+					} else {
+						size_t next_keep = 0;
+						if (!lj_timeline_next_keep(&timeline, index, &next_keep)) {
+							av_log(input_format, AV_LOG_INFO,
+								"Trailing silence to EOF (%.2fs); ending video demux\n",
+								(double)(timeline.source_end - source_ns) / 1000000000.0);
+							av_frame_unref(video_frame);
+							eof_reached = 1;
+							break;
+						}
+						int64_t target_ns = timeline.segments[next_keep].start_ns;
+						int64_t gap_ns = target_ns - source_ns;
+						if (gap_ns >= LJ_MIN_SEEK_SILENCE_NS) {
+							int64_t target_pts = av_rescale_q(target_ns, (AVRational){1, 1000000000},
+								input_format->streams[video_index]->time_base);
+							av_log(input_format, AV_LOG_INFO,
+								"Seeking over %.2fs silence to target PTS %" PRId64 " (%.2fs)\n",
+								(double)gap_ns / 1000000000.0, target_pts, (double)target_ns / 1000000000.0);
+							int seek_ret = av_seek_frame(input_format, video_index, target_pts,
+								AVSEEK_FLAG_BACKWARD);
+							if (seek_ret < 0) {
+								av_log(input_format, AV_LOG_WARNING,
+									"Seek to target PTS %" PRId64 " failed (%d); continuing linear decode\n",
+									target_pts, seek_ret);
+							} else {
+								avcodec_flush_buffers(video_decoder);
+								pre_roll_target_ns = target_ns;
+								fallback_ns = target_ns;
+								timeline.cursor = next_keep;
+								if (has_audio) {
+									int64_t target_sample = timeline.sample_start[next_keep];
+									lj_audio_seek_reset(audio_decoder, -1);
+									audio_pre_roll_sample = target_sample;
+								}
+								av_frame_unref(video_frame);
+								break;
+							}
+						}
+					}
+				}
+				av_frame_unref(video_frame);
+			}
+			if (ret < 0)
+				goto done;
+		} else if (has_audio && demux_packet->stream_index == audio_index) {
+			ret = lj_audio_send_packet(audio_decoder, demux_packet);
+			av_packet_unref(demux_packet);
+			if (ret < 0)
+				goto done;
+			ret = lj_process_audio_samples(&state, audio_decoder, &timeline,
+				audio_samples, audio_channels, &audio_pre_roll_sample);
+			if (ret < 0)
+				goto done;
+		} else {
+			av_packet_unref(demux_packet);
+		}
+
+		if (eof_reached)
+			break;
 	}
-	ret = lj_abort_if_cancelled(state.cancel, state.error, sizeof(state.error));
+
+	// Drain video decoder
+	ret = avcodec_send_packet(video_decoder, NULL);
+	if (ret < 0 && ret != AVERROR_EOF)
+		goto done;
+	for (;;) {
+		ret = lj_abort_if_cancelled(state.cancel, state.error, sizeof(state.error));
+		if (ret < 0)
+			goto done;
+		ret = avcodec_receive_frame(video_decoder, video_frame);
+		if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
+			ret = 0;
+			break;
+		}
+		if (ret < 0)
+			goto done;
+		int64_t source_pts = video_frame->best_effort_timestamp;
+		int64_t source_ns = source_pts == AV_NOPTS_VALUE
+			? fallback_ns
+			: av_rescale_q(source_pts, input_format->streams[video_index]->time_base,
+					(AVRational){1, 1000000000});
+		fallback_ns = source_ns + frame_duration_ns;
+		lj_report_progress(progress,
+			(int)av_rescale(source_ns, 100, timeline.source_end),
+			&last_progress);
+		if (pre_roll_target_ns >= 0) {
+			if (source_ns < pre_roll_target_ns) {
+				av_frame_unref(video_frame);
+				continue;
+			}
+			pre_roll_target_ns = -1;
+		}
+		size_t index = 0;
+		if (lj_timeline_lookup_ns(&timeline, source_ns, &index) &&
+			timeline.segments[index].action == 0) {
+			int64_t output_ns = lj_timeline_map_ns(&timeline, index, source_ns);
+			int64_t output_pts = av_rescale_q(output_ns, (AVRational){1, 1000000000},
+				state.video_encoder->time_base);
+			if (state.last_video_pts != AV_NOPTS_VALUE && output_pts <= state.last_video_pts)
+				output_pts = state.last_video_pts + 1;
+			ret = lj_encode_video_frame(&state, video_frame, output_pts);
+			if (ret < 0) {
+				av_frame_unref(video_frame);
+				goto done;
+			}
+			state.last_video_pts = output_pts;
+		}
+		av_frame_unref(video_frame);
+	}
+
+	// Drain audio decoder and encoders
+	if (has_audio) {
+		ret = lj_audio_flush(audio_decoder);
+		if (ret < 0)
+			goto done;
+		ret = lj_process_audio_samples(&state, audio_decoder, &timeline,
+			audio_samples, audio_channels, &audio_pre_roll_sample);
+		if (ret < 0)
+			goto done;
+		ret = lj_encode_audio_available(&state, 1);
+		if (ret < 0)
+			goto done;
+		ret = lj_drain_audio_encoder(&state);
+		if (ret < 0)
+			goto done;
+	}
+
+	// Flush video encoder
+	ret = avcodec_send_frame(state.video_encoder, NULL);
+	if (ret < 0 && ret != AVERROR_EOF)
+		goto done;
+	ret = lj_drain_video(&state);
 	if (ret < 0)
 		goto done;
-	timeline.cursor = 0;
-	ret = lj_render_video(&state, input, options, &timeline, progress, &last_progress);
-	if (ret < 0)
-		goto done;
-	ret = lj_abort_if_cancelled(state.cancel, state.error, sizeof(state.error));
-	if (ret >= 0)
-		ret = av_write_trailer(state.output);
+
+	// Trailer
+	ret = av_write_trailer(state.output);
 	if (ret >= 0)
 		lj_report_progress(progress, 100, &last_progress);
 
@@ -863,6 +863,13 @@ done:
 		else
 			lj_fferror(error, error_size, "rendering", ret);
 	}
+	av_frame_free(&video_frame);
+	av_packet_free(&demux_packet);
+	free(audio_samples);
+	lj_audio_close(&audio_decoder);
+	avcodec_free_context(&video_decoder);
+	if (input_format)
+		avformat_close_input(&input_format);
 	if (state.output) {
 		if (!(state.output->oformat->flags & AVFMT_NOFILE)) {
 			int close_ret = avio_closep(&state.output->pb);

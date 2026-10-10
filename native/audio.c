@@ -325,6 +325,126 @@ static int lj_audio_decode_more(LJAudioDecoder *decoder)
 	}
 }
 
+static int lj_audio_init_codec(LJAudioDecoder *decoder,
+	const AVCodecParameters *codecpar, AVRational pkt_timebase,
+	int output_channels, int rnnoise_enabled, double rnnoise_strength,
+	const char *rnnoise_model, char *error, size_t error_size)
+{
+	const AVCodec *codec = avcodec_find_decoder(codecpar->codec_id);
+	if (!codec) {
+		lj_error(error, error_size, "finding audio decoder");
+		return AVERROR_DECODER_NOT_FOUND;
+	}
+	decoder->codec = avcodec_alloc_context3(codec);
+	if (!decoder->codec)
+		return AVERROR(ENOMEM);
+	int ret = avcodec_parameters_to_context(decoder->codec, codecpar);
+	if (ret < 0)
+		return ret;
+	decoder->codec->pkt_timebase = pkt_timebase;
+	decoder->codec->thread_count = 1;
+	ret = avcodec_open2(decoder->codec, codec, NULL);
+	if (ret < 0)
+		return ret;
+	decoder->packet = av_packet_alloc();
+	decoder->frame = av_frame_alloc();
+	if (!decoder->packet || !decoder->frame)
+		return AVERROR(ENOMEM);
+
+	AVChannelLayout input_layout = decoder->codec->ch_layout;
+	if (input_layout.nb_channels <= 0) {
+		av_channel_layout_default(&input_layout, decoder->codec->ch_layout.nb_channels > 0
+			? decoder->codec->ch_layout.nb_channels
+			: 1);
+	}
+	AVChannelLayout output_layout;
+	av_channel_layout_default(&output_layout, rnnoise_enabled ? 1 : output_channels);
+	ret = swr_alloc_set_opts2(&decoder->resampler, &output_layout, AV_SAMPLE_FMT_FLT, 48000,
+		&input_layout, decoder->codec->sample_fmt,
+		decoder->codec->sample_rate, 0, NULL);
+	av_channel_layout_uninit(&output_layout);
+	if (ret < 0)
+		return ret;
+	ret = swr_init(decoder->resampler);
+	if (ret < 0)
+		return ret;
+
+	if (rnnoise_enabled) {
+		decoder->filter_graph = avfilter_graph_alloc();
+		if (!decoder->filter_graph)
+			return AVERROR(ENOMEM);
+		const AVFilter *buffer_source = avfilter_get_by_name("abuffer");
+		const AVFilter *buffer_sink = avfilter_get_by_name("abuffersink");
+		const AVFilter *sample_frames = avfilter_get_by_name("asetnsamples");
+		const AVFilter *rnnoise = avfilter_get_by_name("arnndn");
+		if (!buffer_source || !buffer_sink || !sample_frames || !rnnoise)
+			return AVERROR_FILTER_NOT_FOUND;
+		ret = avfilter_graph_create_filter(&decoder->filter_source, buffer_source, "input",
+			"time_base=1/48000:sample_rate=48000:sample_fmt=flt:channel_layout=mono",
+			NULL, decoder->filter_graph);
+		if (ret < 0)
+			return ret;
+		AVFilterContext *noise = avfilter_graph_alloc_filter(decoder->filter_graph, rnnoise,
+			"rnnoise");
+		ret = noise ? 0 : AVERROR(ENOMEM);
+		if (ret >= 0)
+			ret = av_opt_set(noise, "model", rnnoise_model, AV_OPT_SEARCH_CHILDREN);
+		if (ret >= 0)
+			ret = av_opt_set_double(noise, "mix", rnnoise_strength, AV_OPT_SEARCH_CHILDREN);
+		if (ret >= 0)
+			ret = avfilter_init_str(noise, NULL);
+		AVFilterContext *sample_frame_filter = NULL;
+		if (ret >= 0)
+			ret = avfilter_graph_create_filter(&sample_frame_filter, sample_frames, "frames",
+				"n=480:pad=1", NULL, decoder->filter_graph);
+		if (ret >= 0)
+			ret = avfilter_graph_create_filter(&decoder->filter_sink, buffer_sink, "output",
+				NULL, NULL, decoder->filter_graph);
+		if (ret >= 0)
+			ret = avfilter_link(decoder->filter_source, 0, sample_frame_filter, 0);
+		if (ret >= 0)
+			ret = avfilter_link(sample_frame_filter, 0, noise, 0);
+		if (ret >= 0)
+			ret = avfilter_link(noise, 0, decoder->filter_sink, 0);
+		if (ret >= 0)
+			ret = avfilter_graph_config(decoder->filter_graph, NULL);
+		if (ret < 0)
+			return ret;
+	}
+	return 0;
+}
+
+LJAudioDecoder *lj_audio_open_stream(const AVStream *stream, int output_channels,
+	LJCancelToken *cancel,
+	int rnnoise_enabled, double rnnoise_strength,
+	const char *rnnoise_model, char *error, size_t error_size)
+{
+	if (!stream || (output_channels != 1 && output_channels != 2)) {
+		lj_error(error, error_size, "opening audio decoder: invalid arguments");
+		return NULL;
+	}
+	if (rnnoise_enabled && (!rnnoise_model || !*rnnoise_model)) {
+		lj_error(error, error_size, "opening RNNoise: model path is required");
+		return NULL;
+	}
+	LJAudioDecoder *decoder = calloc(1, sizeof(*decoder));
+	if (!decoder) {
+		lj_error(error, error_size, "allocating audio decoder: out of memory");
+		return NULL;
+	}
+	decoder->output_channels = output_channels;
+	decoder->cancel = cancel;
+	decoder->stream_index = stream->index;
+	int ret = lj_audio_init_codec(decoder, stream->codecpar, stream->time_base,
+		output_channels, rnnoise_enabled, rnnoise_strength, rnnoise_model,
+		error, error_size);
+	if (ret < 0) {
+		lj_audio_close(&decoder);
+		return NULL;
+	}
+	return decoder;
+}
+
 LJAudioDecoder *lj_audio_open(const char *path, int output_channels,
 	LJCancelToken *cancel,
 	int rnnoise_enabled, double rnnoise_strength,
@@ -359,112 +479,116 @@ LJAudioDecoder *lj_audio_open(const char *path, int output_channels,
 	ret = avformat_find_stream_info(decoder->format, NULL);
 	if (ret < 0)
 		goto fail;
-	const AVCodec *codec = NULL;
 	decoder->stream_index = av_find_best_stream(decoder->format, AVMEDIA_TYPE_AUDIO,
-		-1, -1, &codec, 0);
+		-1, -1, NULL, 0);
 	if (decoder->stream_index < 0) {
 		ret = AVERROR_STREAM_NOT_FOUND;
 		goto fail;
 	}
-	decoder->codec = avcodec_alloc_context3(codec);
-	if (!decoder->codec) {
-		ret = AVERROR(ENOMEM);
-		goto fail;
-	}
-	ret = avcodec_parameters_to_context(decoder->codec,
-		decoder->format->streams[decoder->stream_index]->codecpar);
+	AVStream *stream = decoder->format->streams[decoder->stream_index];
+	ret = lj_audio_init_codec(decoder, stream->codecpar, stream->time_base,
+		output_channels, rnnoise_enabled, rnnoise_strength, rnnoise_model,
+		decoder->error, sizeof(decoder->error));
 	if (ret < 0)
 		goto fail;
-	decoder->codec->pkt_timebase = decoder->format->streams[decoder->stream_index]->time_base;
-	decoder->codec->thread_count = 1;
-	ret = avcodec_open2(decoder->codec, codec, NULL);
-	if (ret < 0)
-		goto fail;
-	decoder->packet = av_packet_alloc();
-	decoder->frame = av_frame_alloc();
-	if (!decoder->packet || !decoder->frame) {
-		ret = AVERROR(ENOMEM);
-		goto fail;
-	}
-
-	AVChannelLayout input_layout = decoder->codec->ch_layout;
-	if (input_layout.nb_channels <= 0) {
-		av_channel_layout_default(&input_layout, decoder->codec->ch_layout.nb_channels > 0
-			? decoder->codec->ch_layout.nb_channels
-			: 1);
-	}
-	AVChannelLayout output_layout;
-	av_channel_layout_default(&output_layout, rnnoise_enabled ? 1 : output_channels);
-	ret = swr_alloc_set_opts2(&decoder->resampler, &output_layout, AV_SAMPLE_FMT_FLT, 48000,
-		&input_layout, decoder->codec->sample_fmt,
-		decoder->codec->sample_rate, 0, NULL);
-	if (ret < 0)
-		goto fail;
-	ret = swr_init(decoder->resampler);
-	if (ret < 0)
-		goto fail;
-
-	if (rnnoise_enabled) {
-		decoder->filter_graph = avfilter_graph_alloc();
-		if (!decoder->filter_graph) {
-			ret = AVERROR(ENOMEM);
-			goto fail;
-		}
-		const AVFilter *buffer_source = avfilter_get_by_name("abuffer");
-		const AVFilter *buffer_sink = avfilter_get_by_name("abuffersink");
-		const AVFilter *sample_frames = avfilter_get_by_name("asetnsamples");
-		const AVFilter *rnnoise = avfilter_get_by_name("arnndn");
-		if (!buffer_source || !buffer_sink || !sample_frames || !rnnoise) {
-			ret = AVERROR_FILTER_NOT_FOUND;
-			goto fail;
-		}
-		ret = avfilter_graph_create_filter(&decoder->filter_source, buffer_source, "input",
-			"time_base=1/48000:sample_rate=48000:sample_fmt=flt:channel_layout=mono",
-			NULL, decoder->filter_graph);
-		if (ret < 0)
-			goto fail;
-		AVFilterContext *noise = avfilter_graph_alloc_filter(decoder->filter_graph, rnnoise,
-			"rnnoise");
-		ret = noise ? 0 : AVERROR(ENOMEM);
-		if (ret >= 0)
-			ret = av_opt_set(noise, "model", rnnoise_model, AV_OPT_SEARCH_CHILDREN);
-		if (ret >= 0)
-			ret = av_opt_set_double(noise, "mix", rnnoise_strength, AV_OPT_SEARCH_CHILDREN);
-		if (ret >= 0)
-			ret = avfilter_init_str(noise, NULL);
-		AVFilterContext *sample_frame_filter = NULL;
-		if (ret >= 0)
-			ret = avfilter_graph_create_filter(&sample_frame_filter, sample_frames, "frames",
-				"n=480:pad=1", NULL, decoder->filter_graph);
-		if (ret >= 0)
-			ret = avfilter_graph_create_filter(&decoder->filter_sink, buffer_sink, "output",
-				NULL, NULL, decoder->filter_graph);
-		if (ret >= 0)
-			ret = avfilter_link(decoder->filter_source, 0, sample_frame_filter, 0);
-		if (ret >= 0)
-			ret = avfilter_link(sample_frame_filter, 0, noise, 0);
-		if (ret >= 0)
-			ret = avfilter_link(noise, 0, decoder->filter_sink, 0);
-		if (ret >= 0)
-			ret = avfilter_graph_config(decoder->filter_graph, NULL);
-		if (ret < 0)
-			goto fail;
-	}
 	return decoder;
 
 fail:
-	if (ret < 0) {
-		if (ret == AVERROR_EXIT && lj_cancel_requested(decoder->cancel))
-			lj_error(decoder->error, sizeof(decoder->error), "operation cancelled");
-		else
-			lj_fferror(decoder->error, sizeof(decoder->error), "opening audio decoder", ret);
+	if (decoder) {
+		if (decoder->error[0] && error && error_size > 0)
+			snprintf(error, error_size, "%s", decoder->error);
+		else if (error && error_size > 0)
+			lj_fferror(error, error_size, "opening audio decoder", ret);
+		lj_audio_close(&decoder);
 	}
-	if (decoder->error[0])
-		lj_error(error, error_size, "%s", decoder->error);
-	else
-		lj_error(error, error_size, "opening audio decoder failed");
-	lj_audio_close(&decoder);
 	return NULL;
+}
+
+int lj_audio_send_packet(LJAudioDecoder *decoder, const AVPacket *packet)
+{
+	if (!decoder || !decoder->codec)
+		return AVERROR(EINVAL);
+	int ret = avcodec_send_packet(decoder->codec, packet);
+	if (ret < 0)
+		return ret;
+	for (;;) {
+		if (lj_cancel_requested(decoder->cancel))
+			return AVERROR_EXIT;
+		ret = avcodec_receive_frame(decoder->codec, decoder->frame);
+		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+			break;
+		if (ret < 0)
+			return ret;
+		if (decoder->emitted_samples < 0 && decoder->frame->pts != AV_NOPTS_VALUE) {
+			decoder->emitted_samples = av_rescale_q(decoder->frame->pts,
+				decoder->codec->pkt_timebase, (AVRational){1, 48000});
+		}
+		ret = lj_audio_process_swr(decoder,
+			(const uint8_t **)decoder->frame->extended_data,
+			decoder->frame->nb_samples);
+		av_frame_unref(decoder->frame);
+		if (ret < 0)
+			return ret;
+	}
+	return 0;
+}
+
+int lj_audio_flush(LJAudioDecoder *decoder)
+{
+	if (!decoder || !decoder->codec)
+		return AVERROR(EINVAL);
+	int ret = avcodec_send_packet(decoder->codec, NULL);
+	if (ret < 0 && ret != AVERROR_EOF)
+		return ret;
+	for (;;) {
+		if (lj_cancel_requested(decoder->cancel))
+			return AVERROR_EXIT;
+		ret = avcodec_receive_frame(decoder->codec, decoder->frame);
+		if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN))
+			break;
+		if (ret < 0)
+			return ret;
+		if (decoder->emitted_samples < 0 && decoder->frame->pts != AV_NOPTS_VALUE) {
+			decoder->emitted_samples = av_rescale_q(decoder->frame->pts,
+				decoder->codec->pkt_timebase, (AVRational){1, 48000});
+		}
+		ret = lj_audio_process_swr(decoder,
+			(const uint8_t **)decoder->frame->extended_data,
+			decoder->frame->nb_samples);
+		av_frame_unref(decoder->frame);
+		if (ret < 0)
+			return ret;
+	}
+	ret = lj_audio_flush_swr(decoder);
+	if (ret < 0)
+		return ret;
+	if (decoder->filter_source) {
+		ret = lj_audio_filter_end(decoder);
+		if (ret < 0)
+			return ret;
+		int drain;
+		do {
+			drain = lj_audio_filter_drain(decoder);
+			if (drain < 0)
+				return drain;
+		} while (drain == 0);
+	}
+	return 0;
+}
+
+void lj_audio_seek_reset(LJAudioDecoder *decoder, int64_t target_sample)
+{
+	if (!decoder)
+		return;
+	if (decoder->codec)
+		avcodec_flush_buffers(decoder->codec);
+	if (decoder->resampler) {
+		swr_close(decoder->resampler);
+		swr_init(decoder->resampler);
+	}
+	decoder->pending_frames = 0;
+	decoder->swr_flushed = 0;
+	decoder->emitted_samples = target_sample;
 }
 
 int lj_audio_read(LJAudioDecoder *decoder, float *output, int max_samples,
@@ -477,18 +601,22 @@ int lj_audio_read(LJAudioDecoder *decoder, float *output, int max_samples,
 		return -1;
 	}
 	while (decoder->pending_frames < (size_t)max_samples && !decoder->decoder_eof) {
-		int ret = lj_audio_decode_more(decoder);
-		if (ret < 0) {
-			if (lj_cancel_requested(decoder->cancel))
-				lj_error(error, error_size, "operation cancelled");
-			else if (decoder->error[0])
-				lj_error(error, error_size, "%s", decoder->error);
-			else
-				lj_fferror(error, error_size, "decoding audio", ret);
-			return -1;
-		}
-		if (decoder->decoder_eof)
+		if (decoder->format) {
+			int ret = lj_audio_decode_more(decoder);
+			if (ret < 0) {
+				if (lj_cancel_requested(decoder->cancel))
+					lj_error(error, error_size, "operation cancelled");
+				else if (decoder->error[0])
+					lj_error(error, error_size, "%s", decoder->error);
+				else
+					lj_fferror(error, error_size, "decoding audio", ret);
+				return -1;
+			}
+			if (decoder->decoder_eof)
+				break;
+		} else {
 			break;
+		}
 	}
 	if (decoder->pending_frames == 0) {
 		if (start_sample)

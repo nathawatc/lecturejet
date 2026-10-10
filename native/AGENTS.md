@@ -32,6 +32,9 @@ Guidelines for FFmpeg C code and CGO bridge. Back to [AGENTS.md](../AGENTS.md).
 - **Keyframe Seeking Over Silence**: On silent gaps >= 3.0 seconds, seek backward
   to the keyframe before the next speech segment and discard pre-roll frames,
   bypassing full linear decode. Short gaps (< 3.0s) remain linearly decoded.
+- **Single-Pass Interleaved Demux**: Demux input audio and video packets in a
+  single pass (`av_read_frame`), interleaving encoded output packets without
+  reading media files multiple times.
 
 ## Cancellation & Concurrency
 
