@@ -14,6 +14,7 @@ import "C"
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"unsafe"
 
@@ -83,7 +84,7 @@ func Probe(path string) (ProbeInfo, error) {
 	errorText := make([]byte, errorBufferSize)
 	ret := C.lj_probe_file(cPath, &cInfo, (*C.char)(unsafe.Pointer(&errorText[0])), C.size_t(len(errorText)))
 	if ret < 0 {
-		return ProbeInfo{}, fmt.Errorf("%s", cString(errorText))
+		return ProbeInfo{}, cError(errorText, fmt.Sprintf("probing %s failed (%d)", path, ret))
 	}
 	return ProbeInfo{
 		DurationNS:  timeline.TimeNS(cInfo.duration_ns),
@@ -104,7 +105,7 @@ func ProbeVAAPI(device, codec string, width, height int) error {
 	ret := C.lj_probe_vaapi(cDevice, cCodec, C.int(width), C.int(height),
 		(*C.char)(unsafe.Pointer(&errorText[0])), C.size_t(len(errorText)))
 	if ret < 0 {
-		return fmt.Errorf("%s", cString(errorText))
+		return cError(errorText, fmt.Sprintf("probing VAAPI %s %s failed (%d)", device, codec, ret))
 	}
 	return nil
 }
@@ -137,7 +138,7 @@ func OpenAudio(ctx context.Context, path string, channels int, rnnoise bool, str
 		if ctx != nil && ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("%s", cString(errorText))
+		return nil, cError(errorText, "opening audio decoder failed")
 	}
 	return &AudioDecoder{ptr: ptr, channels: channels, cancel: cancel}, nil
 }
@@ -152,7 +153,7 @@ func (d *AudioDecoder) Read(dst []float32) (samples int, start int64, err error)
 		(*C.int64_t)(unsafe.Pointer(&start)), (*C.char)(unsafe.Pointer(&errorText[0])),
 		C.size_t(len(errorText)))
 	if ret < 0 {
-		return 0, 0, fmt.Errorf("%s", cString(errorText))
+		return 0, 0, cError(errorText, fmt.Sprintf("reading audio failed (%d)", ret))
 	}
 	return int(ret), start, nil
 }
@@ -228,7 +229,7 @@ func Render(ctx context.Context, input, output string, source timeline.Timeline,
 				renderError = ctx.Err()
 				return
 			}
-			renderError = fmt.Errorf("%s", cString(errorText))
+			renderError = cError(errorText, "initializing render engine failed")
 			return
 		}
 		defer C.lj_render_close(&engine)
@@ -239,7 +240,7 @@ func Render(ctx context.Context, input, output string, source timeline.Timeline,
 			return
 		}
 		if ret < 0 {
-			renderError = fmt.Errorf("%s", cString(errorText))
+			renderError = cError(errorText, fmt.Sprintf("rendering failed (%d)", ret))
 			return
 		}
 	})
@@ -251,6 +252,14 @@ func boolInt(value bool) C.int {
 		return 1
 	}
 	return 0
+}
+
+func cError(value []byte, fallback string) error {
+	msg := cString(value)
+	if msg == "" {
+		return errors.New(fallback)
+	}
+	return errors.New(msg)
 }
 
 func cString(value []byte) string {

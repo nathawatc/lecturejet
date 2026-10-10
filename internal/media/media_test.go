@@ -28,6 +28,18 @@ func TestRenderRejectsEmptyTimeline(t *testing.T) {
 	}
 }
 
+func TestCErrorFallback(t *testing.T) {
+	err := cError([]byte{0, 0, 0}, "fallback error")
+	if err == nil || err.Error() != "fallback error" {
+		t.Fatalf("expected fallback error, got %v", err)
+	}
+
+	err = cError([]byte("explicit error\x00"), "fallback error")
+	if err == nil || err.Error() != "explicit error" {
+		t.Fatalf("expected explicit error, got %v", err)
+	}
+}
+
 func TestFixtureProbeAndFiniteAudio(t *testing.T) {
 	path := os.Getenv("LECTUREJET_TEST_MEDIA")
 	if path == "" {
