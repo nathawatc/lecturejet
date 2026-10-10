@@ -1,6 +1,6 @@
 # Internal Pipeline Guidelines
 
-Guidelines for analysis, silence detection, and timeline mapping.
+Guidelines for analysis, audio models, timeline mapping, and app workflow.
 Back to [AGENTS.md](../AGENTS.md).
 
 ## Analysis & Audio
@@ -10,6 +10,12 @@ Back to [AGENTS.md](../AGENTS.md).
 - **48 kHz Boundary Alignment**: Resample decoded audio to 48 kHz mono for
   silence detection. Align analyzed timestamps to integer 48 kHz sample
   boundaries.
+- **Vectorized Analysis**: Accelerate RMS energy, peak scanning, and zero-crossing
+  rate with AVX2 and FMA3 kernels on `amd64` (`rms_amd64.s`, `peak_amd64.s`).
+  Maintain strict output parity with `rms_generic.go` portable fallbacks.
+- **Embedded Audio Models**: Package neural weights in `internal/audio/assets/std.rnnn`.
+  Expose to FFmpeg via `memfd_create` anonymous RAM descriptors (`/proc/self/fd/<fd>`)
+  on Linux to avoid temporary files on disk.
 - **Sequential Recurrent Filters**: Maintain state sequentially for recurrent
   filters such as `arnndn`; process an entire audio stream through a continuous
   filtergraph without splitting across parallel instances.
@@ -26,3 +32,15 @@ Back to [AGENTS.md](../AGENTS.md).
 - **Presentation Timestamps**: Map video frames strictly using presentation
   timestamps (PTS / `best_effort_timestamp`); never substitute packet decode
   timestamps (DTS).
+
+## Application Workflow & UI
+
+- **Multi-Phase Progress**: Propagate phase context via `WithWorkflow`. Terminal
+  progress reporters calculate EMA throughput, time remaining, and OSC 9;4 progress
+  escape codes while preserving quiet periodic logs on non-TTY streams.
+- **Safe Publication**: Always render output to a hidden temporary file in the target
+  directory (`.output.mp4.lecturejet-*.mp4`). Enforce `--force` overwrite guards
+  prior to encoding and commit atomically via filesystem rename.
+- **Terminal Wizard**: Probe available VAAPI devices via `/dev/dri/renderD*`,
+  validate hardware codecs interactively, and default to embedded RNNoise at 100%
+  strength with automatic mono downmixing.

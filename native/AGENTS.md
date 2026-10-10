@@ -36,8 +36,15 @@ Guidelines for FFmpeg C code and CGO bridge. Back to [AGENTS.md](../AGENTS.md).
 
 - **Hardware/Software Decode + VAAPI Upload**: Decode source frames using VAAPI
   hardware acceleration when supported, falling back to multi-threaded software
-  decode and `NV12` scaling if the input codec or profile is unsupported.
-  Hardware decoded frames pass directly to the VAAPI encoder on GPU VRAM.
+  decode and `NV12` upload if the input codec or profile is unsupported.
+  Hardware-decoded frames pass directly to the VAAPI encoder on GPU VRAM.
+- **Hardware Surface Scaling**: Process frame scaling and format negotiation
+  directly on the GPU using `scale_vaapi` in `filter/filtergraph.c`, bypassing
+  host CPU scaling.
+- **Decoupled Encode Queue**: Drain encoded packets opportunistically on
+  `AVERROR(EAGAIN)` or when hardware surface pools are depleted in
+  `pipeline/video_pipeline.c`. Avoid per-frame lockstep draining to saturate GPU
+  encoder queues.
 - **Strict Configuration**: Fail with diagnostics if an explicitly requested
   VAAPI device or codec is unsupported; never fall back silently.
 - **HEVC Codec Tags**: Tag HEVC streams as `hev1` or `hvc1` directly during
@@ -48,6 +55,14 @@ Guidelines for FFmpeg C code and CGO bridge. Back to [AGENTS.md](../AGENTS.md).
 - **Single-Pass Interleaved Demux**: Demux input audio and video packets in a
   single pass (`av_read_frame`), interleaving encoded output packets without
   reading media files multiple times.
+
+## Diagnostics & Standards
+
+- **Strict Compilation**: All C module sources must pass `-Wall -Wextra -Werror -pedantic -std=gnu11`
+  cleanly via `make native-check`.
+- **Centralized Profiles**: All VAAPI HEVC/H.264 and AAC encoder parameters
+  (bitrates, GOP structure, compression levels, B-frame limits) reside exclusively
+  in `config/encoder_profile.c`.
 
 ## Cancellation & Concurrency
 
