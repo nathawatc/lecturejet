@@ -20,9 +20,10 @@ Guidelines for FFmpeg C code and CGO bridge. Back to [AGENTS.md](../AGENTS.md).
 
 ## Video & VAAPI
 
-- **Software Decode + VAAPI Upload**: Decode source frames in software,
-  convert/scale to `NV12`, and upload to VAAPI hardware frames via
-  `av_hwframe_transfer_data` for encoding.
+- **Hardware/Software Decode + VAAPI Upload**: Decode source frames using VAAPI
+  hardware acceleration when supported, falling back to multi-threaded software
+  decode and `NV12` scaling if the input codec or profile is unsupported.
+  Hardware decoded frames pass directly to the VAAPI encoder on GPU VRAM.
 - **Strict Configuration**: Fail with diagnostics if an explicitly requested
   VAAPI device or codec is unsupported; never fall back silently.
 - **Lossless HEVC Remux**: Produce `hvc1` tagged HEVC output through stream-copy

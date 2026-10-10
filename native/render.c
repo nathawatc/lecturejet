@@ -312,6 +312,26 @@ static int lj_encode_video_frame(LJRenderState *state, AVFrame *decoded,
 	int ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
 	if (ret < 0)
 		return ret;
+	if (decoded->format == AV_PIX_FMT_VAAPI) {
+		decoded->pts = output_pts;
+		ret = avcodec_send_frame(state->video_encoder, decoded);
+		if (ret >= 0) {
+			state->last_video_pts = output_pts;
+			return lj_drain_video(state);
+		}
+		AVFrame *downloaded = av_frame_alloc();
+		if (!downloaded)
+			return AVERROR(ENOMEM);
+		int dl_ret = av_hwframe_transfer_data(downloaded, decoded, 0);
+		if (dl_ret < 0) {
+			av_frame_free(&downloaded);
+			return ret;
+		}
+		downloaded->pts = output_pts;
+		ret = lj_encode_video_frame(state, downloaded, output_pts);
+		av_frame_free(&downloaded);
+		return ret;
+	}
 	if (!state->scaler) {
 		state->scaler = sws_getContext(decoded->width, decoded->height,
 			(enum AVPixelFormat)decoded->format,
@@ -451,6 +471,18 @@ static int lj_render_audio(LJRenderState *state, const char *input,
 	return ret;
 }
 
+static enum AVPixelFormat lj_get_hw_format(AVCodecContext *ctx,
+	const enum AVPixelFormat *pix_fmts)
+{
+	(void)ctx;
+	const enum AVPixelFormat *p;
+	for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
+		if (*p == AV_PIX_FMT_VAAPI)
+			return AV_PIX_FMT_VAAPI;
+	}
+	return pix_fmts[0];
+}
+
 static int lj_render_video(LJRenderState *state, const char *input,
 	const LJRenderOptions *options,
 	LJTimelineView *timeline, LJProgressCallback progress,
@@ -494,7 +526,27 @@ static int lj_render_video(LJRenderState *state, const char *input,
 	decoder->pkt_timebase = format->streams[stream_index]->time_base;
 	decoder->thread_count = options->threads > 0 ? options->threads : 0;
 	decoder->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+	if (state->vaapi_device) {
+		decoder->hw_device_ctx = av_buffer_ref(state->vaapi_device);
+		decoder->get_format = lj_get_hw_format;
+	}
 	ret = avcodec_open2(decoder, decoder_codec, NULL);
+	if (ret < 0 && state->vaapi_device) {
+		avcodec_free_context(&decoder);
+		decoder = avcodec_alloc_context3(decoder_codec);
+		if (!decoder) {
+			ret = AVERROR(ENOMEM);
+			goto fail;
+		}
+		ret = avcodec_parameters_to_context(decoder,
+			format->streams[stream_index]->codecpar);
+		if (ret < 0)
+			goto fail;
+		decoder->pkt_timebase = format->streams[stream_index]->time_base;
+		decoder->thread_count = options->threads > 0 ? options->threads : 0;
+		decoder->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
+		ret = avcodec_open2(decoder, decoder_codec, NULL);
+	}
 	if (ret < 0)
 		goto fail;
 	packet = av_packet_alloc();
