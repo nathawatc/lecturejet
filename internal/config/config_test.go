@@ -8,7 +8,7 @@ import (
 func TestDefaultLectureSettings(t *testing.T) {
 	cfg := Default()
 	if cfg.VideoCodec != VideoHEVC || cfg.HEVCCodecTag != HEVCCodecTagHEV1 ||
-		!cfg.Audio.Mono || cfg.Noise.Strength != 80 || cfg.Force {
+		!cfg.Audio.Mono || cfg.Noise.Strength != 100 || cfg.Force {
 		t.Fatalf("unexpected defaults: %+v", cfg)
 	}
 	if cfg.Silence.WindowMS != 10 || cfg.Silence.ThresholdDB != -38 ||

@@ -52,9 +52,9 @@ func Configure(in io.Reader, out io.Writer, cfg config.Config, choices []VAAPICh
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(choice)), "y") {
 		cfg.Noise.Enabled = true
 		fmt.Fprintln(out, "Noise reduction strength:")
-		fmt.Fprintln(out, "  [1] Strong  80%   recommended")
+		fmt.Fprintln(out, "  [1] Maximum 100% (default)")
 		fmt.Fprintln(out, "  [2] Strong  90%")
-		fmt.Fprintln(out, "  [3] Maximum 100%")
+		fmt.Fprintln(out, "  [3] Strong  80%")
 		fmt.Fprintln(out, "  [4] Custom")
 		strengthChoice, err := readChoice(reader, out, "Choice", 1, 4)
 		if err != nil {
@@ -62,13 +62,13 @@ func Configure(in io.Reader, out io.Writer, cfg config.Config, choices []VAAPICh
 		}
 		switch strengthChoice {
 		case 1:
-			cfg.Noise.Strength = 80
+			cfg.Noise.Strength = 100
 		case 2:
 			cfg.Noise.Strength = 90
 		case 3:
-			cfg.Noise.Strength = 100
+			cfg.Noise.Strength = 80
 		case 4:
-			value, err := readInt(reader, out, "Strength 0-100 [80]: ", 80)
+			value, err := readInt(reader, out, "Strength 0-100 [100]: ", 100)
 			if err != nil {
 				return config.Config{}, err
 			}

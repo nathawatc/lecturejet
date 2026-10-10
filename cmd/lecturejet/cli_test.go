@@ -197,8 +197,38 @@ func TestParseRNNoiseStereoReachesValidationAndIsRejected(t *testing.T) {
 	if !cfg.Noise.Enabled || cfg.Audio.Mono {
 		t.Fatalf("expected rnnoise enabled and stereo output, got %+v", cfg)
 	}
+	if cfg.Noise.Strength != 100 {
+		t.Fatalf("expected default RNNoise strength 100, got %d", cfg.Noise.Strength)
+	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected RNNoise + stereo configuration to be rejected by validation")
+	}
+}
+
+func TestParseRNNoiseDefaultStrength100(t *testing.T) {
+	cfgRender, _, _, err := parseRenderArgs([]string{
+		"in.mp4", "out.mp4",
+		"--rnnoise",
+		"--rnnoise-model", "model.rnnn",
+		"--non-interactive",
+	})
+	if err != nil {
+		t.Fatalf("unexpected render parse error: %v", err)
+	}
+	if cfgRender.Noise.Strength != 100 {
+		t.Fatalf("expected render default strength 100, got %d", cfgRender.Noise.Strength)
+	}
+
+	cfgAnalyze, err := parseAnalyzeArgs([]string{
+		"in.mp4",
+		"--rnnoise",
+		"--rnnoise-model", "model.rnnn",
+	})
+	if err != nil {
+		t.Fatalf("unexpected analyze parse error: %v", err)
+	}
+	if cfgAnalyze.Noise.Strength != 100 {
+		t.Fatalf("expected analyze default strength 100, got %d", cfgAnalyze.Noise.Strength)
 	}
 }
 

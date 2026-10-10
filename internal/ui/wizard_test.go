@@ -41,8 +41,32 @@ func TestInteractiveRNNoiseDefaultStrength(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !resolved.Noise.Enabled || resolved.Noise.Strength != 80 || resolved.Noise.Model != "model.rnnn" {
+	if !resolved.Noise.Enabled || resolved.Noise.Strength != 100 || resolved.Noise.Model != "model.rnnn" {
 		t.Fatalf("unexpected RNNoise default: %+v", resolved.Noise)
+	}
+}
+
+func TestInteractiveRNNoiseExplicitStrengthChoices(t *testing.T) {
+	cases := []struct {
+		input    string
+		strength int
+	}{
+		{"1\n1\ny\n1\nmodel.rnnn\n\n", 100},
+		{"1\n1\ny\n2\nmodel.rnnn\n\n", 90},
+		{"1\n1\ny\n3\nmodel.rnnn\n\n", 80},
+		{"1\n1\ny\n4\n\nmodel.rnnn\n\n", 100},
+		{"1\n1\ny\n4\n75\nmodel.rnnn\n\n", 75},
+	}
+	for _, tc := range cases {
+		cfg := config.Default()
+		resolved, err := Configure(strings.NewReader(tc.input), &strings.Builder{}, cfg,
+			[]VAAPIChoice{{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"}})
+		if err != nil {
+			t.Fatalf("input %q failed: %v", tc.input, err)
+		}
+		if resolved.Noise.Strength != tc.strength {
+			t.Fatalf("input %q: got strength %d, want %d", tc.input, resolved.Noise.Strength, tc.strength)
+		}
 	}
 }
 

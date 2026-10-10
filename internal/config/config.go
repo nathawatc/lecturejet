@@ -60,7 +60,7 @@ func Default() Config {
 		VideoCodec:   VideoHEVC,
 		HEVCCodecTag: HEVCCodecTagHEV1,
 		Audio:        AudioConfig{Mono: true},
-		Noise:        NoiseConfig{Strength: 80},
+		Noise:        NoiseConfig{Strength: 100},
 		Silence: SilenceConfig{
 			WindowMS:     10,
 			ThresholdDB:  -38,
