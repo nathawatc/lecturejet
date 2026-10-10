@@ -4,9 +4,37 @@ import "testing"
 
 func BenchmarkSilenceWindowAnalysis(b *testing.B) {
 	samples := repeatedSamples(480, 0.08)
+	b.SetBytes(int64(len(samples) * 4))
 	b.ResetTimer()
 	for b.Loop() {
 		_ = AnalyzeWindow(samples)
+	}
+}
+
+func BenchmarkAnalyzeWindow(b *testing.B) {
+	samples := repeatedSamples(480, 0.08)
+	b.SetBytes(int64(len(samples) * 4))
+	b.ResetTimer()
+	for b.Loop() {
+		_ = AnalyzeWindow(samples)
+	}
+}
+
+func BenchmarkPeakAbs_480(b *testing.B) {
+	samples := repeatedSamples(480, 0.08)
+	b.SetBytes(int64(len(samples) * 4))
+	b.ResetTimer()
+	for b.Loop() {
+		_ = peakAbs(samples)
+	}
+}
+
+func BenchmarkPeakAbs_480_Generic(b *testing.B) {
+	samples := repeatedSamples(480, 0.08)
+	b.SetBytes(int64(len(samples) * 4))
+	b.ResetTimer()
+	for b.Loop() {
+		_ = peakAbsGeneric(samples)
 	}
 }
 

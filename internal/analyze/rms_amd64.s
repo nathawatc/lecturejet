@@ -17,6 +17,23 @@ no_avx2:
 	MOVB $0, ret+0(FP)
 	RET
 
+// func hasFMA() bool
+TEXT ·hasFMA(SB), NOSPLIT, $0-1
+	MOVL $0, AX
+	CPUID
+	CMPL AX, $1
+	JL no_fma
+	MOVL $1, AX
+	MOVL $0, CX
+	CPUID
+	BTQ $12, CX
+	JNC no_fma
+	MOVB $1, ret+0(FP)
+	RET
+no_fma:
+	MOVB $0, ret+0(FP)
+	RET
+
 // func sumSquaresAVX2(samples []float32) float64
 TEXT ·sumSquaresAVX2(SB), NOSPLIT, $0-32
 	MOVQ samples_base+0(FP), SI
@@ -35,15 +52,10 @@ loop32:
 	VMOVUPS 64(SI), Y6
 	VMOVUPS 96(SI), Y7
 
-	VMULPS Y4, Y4, Y4
-	VMULPS Y5, Y5, Y5
-	VMULPS Y6, Y6, Y6
-	VMULPS Y7, Y7, Y7
-
-	VADDPS Y4, Y0, Y0
-	VADDPS Y5, Y1, Y1
-	VADDPS Y6, Y2, Y2
-	VADDPS Y7, Y3, Y3
+	VFMADD231PS Y4, Y4, Y0
+	VFMADD231PS Y5, Y5, Y1
+	VFMADD231PS Y6, Y6, Y2
+	VFMADD231PS Y7, Y7, Y3
 
 	ADDQ $128, SI
 	SUBQ $32, CX
@@ -58,8 +70,7 @@ loop8_inner:
 	CMPQ CX, $8
 	JL remainder
 	VMOVUPS (SI), Y4
-	VMULPS Y4, Y4, Y4
-	VADDPS Y4, Y0, Y0
+	VFMADD231PS Y4, Y4, Y0
 	ADDQ $32, SI
 	SUBQ $8, CX
 	JMP loop8_inner
@@ -77,8 +88,7 @@ loop1:
 	CMPQ CX, $0
 	JE done
 	VMOVSS (SI), X1
-	VMULSS X1, X1, X1
-	VADDSS X1, X0, X0
+	VFMADD231SS X1, X1, X0
 	ADDQ $4, SI
 	DECQ CX
 	JMP loop1

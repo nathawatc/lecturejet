@@ -273,6 +273,28 @@ func TestRMSPrecision(t *testing.T) {
 	}
 }
 
+func TestPeakAbsPrecision(t *testing.T) {
+	if peakAbs(nil) != 0 || peakAbs([]float32{}) != 0 {
+		t.Fatal("empty slice should return 0 peak")
+	}
+
+	for _, n := range []int{1, 2, 7, 8, 9, 15, 16, 31, 32, 33, 63, 64, 480, 9600} {
+		samples := make([]float32, n)
+		for i := range samples {
+			val := float32(math.Sin(float64(i)*0.07)) * 0.95
+			if i%3 == 0 {
+				val = -val
+			}
+			samples[i] = val
+		}
+		expected := peakAbsGeneric(samples)
+		got := peakAbs(samples)
+		if got != expected {
+			t.Fatalf("len %d: peakAbs=%v, want %v", n, got, expected)
+		}
+	}
+}
+
 func TestZeroCrossingRateCorrectness(t *testing.T) {
 	if ZeroCrossingRate(nil) != 0 || ZeroCrossingRate([]float32{0.5}) != 0 {
 		t.Fatal("empty or single-element slice should have 0 zero crossings")

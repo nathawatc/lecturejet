@@ -75,7 +75,7 @@ func zcrGeneric(samples []float32) int {
 	return count
 }
 
-func peakAbs(samples []float32) float32 {
+func peakAbsGeneric(samples []float32) float32 {
 	n := len(samples)
 	if n == 0 {
 		return 0
