@@ -29,4 +29,5 @@ type RenderOptions struct {
 	RNNoiseEnabled  bool
 	RNNoiseStrength float64
 	RNNoiseModel    string
+	Threads         int
 }

@@ -11,6 +11,10 @@ typedef struct LJRenderState {
 	AVBufferRef *hw_frames;
 	SwsContext *scaler;
 	SwrContext *audio_resampler;
+	AVFrame *software_frame;
+	AVFrame *hardware_frame;
+	AVPacket *video_packet;
+	AVPacket *audio_packet;
 	int audio_channels;
 	int audio_frame_size;
 	float *audio_fifo;
@@ -41,34 +45,28 @@ static int lj_write_packet(LJRenderState *state, AVPacket *packet, AVStream *str
 
 static int lj_drain_audio(LJRenderState *state, int final_valid_samples)
 {
-	AVPacket *packet = av_packet_alloc();
-	if (!packet)
-		return AVERROR(ENOMEM);
+	if (!state->audio_packet) {
+		state->audio_packet = av_packet_alloc();
+		if (!state->audio_packet)
+			return AVERROR(ENOMEM);
+	}
 	for (;;) {
 		int cancel_ret = lj_abort_if_cancelled(state->cancel, state->error,
 			sizeof(state->error));
-		if (cancel_ret < 0) {
-			av_packet_free(&packet);
+		if (cancel_ret < 0)
 			return cancel_ret;
-		}
-		int ret = avcodec_receive_packet(state->audio_encoder, packet);
-		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-			av_packet_free(&packet);
+		int ret = avcodec_receive_packet(state->audio_encoder, state->audio_packet);
+		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 			return 0;
-		}
-		if (ret < 0) {
-			av_packet_free(&packet);
+		if (ret < 0)
 			return ret;
-		}
 		if (final_valid_samples > 0 && final_valid_samples < state->audio_frame_size)
-			packet->duration = final_valid_samples;
-		ret = lj_write_packet(state, packet, state->audio_stream,
+			state->audio_packet->duration = final_valid_samples;
+		ret = lj_write_packet(state, state->audio_packet, state->audio_stream,
 			state->audio_encoder->time_base);
-		av_packet_unref(packet);
-		if (ret < 0) {
-			av_packet_free(&packet);
+		av_packet_unref(state->audio_packet);
+		if (ret < 0)
 			return ret;
-		}
 	}
 }
 
@@ -179,32 +177,26 @@ static int lj_drain_audio_encoder(LJRenderState *state)
 
 static int lj_drain_video(LJRenderState *state)
 {
-	AVPacket *packet = av_packet_alloc();
-	if (!packet)
-		return AVERROR(ENOMEM);
+	if (!state->video_packet) {
+		state->video_packet = av_packet_alloc();
+		if (!state->video_packet)
+			return AVERROR(ENOMEM);
+	}
 	for (;;) {
 		int cancel_ret = lj_abort_if_cancelled(state->cancel, state->error,
 			sizeof(state->error));
-		if (cancel_ret < 0) {
-			av_packet_free(&packet);
+		if (cancel_ret < 0)
 			return cancel_ret;
-		}
-		int ret = avcodec_receive_packet(state->video_encoder, packet);
-		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-			av_packet_free(&packet);
+		int ret = avcodec_receive_packet(state->video_encoder, state->video_packet);
+		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
 			return 0;
-		}
-		if (ret < 0) {
-			av_packet_free(&packet);
+		if (ret < 0)
 			return ret;
-		}
-		ret = lj_write_packet(state, packet, state->video_stream,
+		ret = lj_write_packet(state, state->video_packet, state->video_stream,
 			state->video_encoder->time_base);
-		av_packet_unref(packet);
-		if (ret < 0) {
-			av_packet_free(&packet);
+		av_packet_unref(state->video_packet);
+		if (ret < 0)
 			return ret;
-		}
 	}
 }
 
@@ -329,33 +321,36 @@ static int lj_encode_video_frame(LJRenderState *state, AVFrame *decoded,
 		if (!state->scaler)
 			return AVERROR(EINVAL);
 	}
-	AVFrame *software = av_frame_alloc();
-	AVFrame *hardware = av_frame_alloc();
-	if (!software || !hardware) {
-		av_frame_free(&software);
-		av_frame_free(&hardware);
-		return AVERROR(ENOMEM);
+	if (!state->software_frame) {
+		state->software_frame = av_frame_alloc();
+		if (!state->software_frame)
+			return AVERROR(ENOMEM);
+		state->software_frame->format = AV_PIX_FMT_NV12;
+		state->software_frame->width = state->video_encoder->width;
+		state->software_frame->height = state->video_encoder->height;
+		ret = av_frame_get_buffer(state->software_frame, 32);
+		if (ret < 0)
+			return ret;
 	}
-	software->format = AV_PIX_FMT_NV12;
-	software->width = state->video_encoder->width;
-	software->height = state->video_encoder->height;
-	ret = av_frame_get_buffer(software, 32);
+	if (!state->hardware_frame) {
+		state->hardware_frame = av_frame_alloc();
+		if (!state->hardware_frame)
+			return AVERROR(ENOMEM);
+	}
+	ret = sws_scale(state->scaler, (const uint8_t *const *)decoded->data,
+				decoded->linesize, 0, decoded->height, state->software_frame->data,
+				state->software_frame->linesize) > 0
+		? 0
+		: AVERROR(EINVAL);
 	if (ret >= 0)
-		ret = sws_scale(state->scaler, (const uint8_t *const *)decoded->data,
-					decoded->linesize, 0, decoded->height, software->data,
-					software->linesize) > 0
-			? 0
-			: AVERROR(EINVAL);
+		ret = av_hwframe_get_buffer(state->hw_frames, state->hardware_frame, 0);
 	if (ret >= 0)
-		ret = av_hwframe_get_buffer(state->hw_frames, hardware, 0);
-	if (ret >= 0)
-		ret = av_hwframe_transfer_data(hardware, software, 0);
+		ret = av_hwframe_transfer_data(state->hardware_frame, state->software_frame, 0);
 	if (ret >= 0) {
-		hardware->pts = output_pts;
-		ret = avcodec_send_frame(state->video_encoder, hardware);
+		state->hardware_frame->pts = output_pts;
+		ret = avcodec_send_frame(state->video_encoder, state->hardware_frame);
 	}
-	av_frame_free(&software);
-	av_frame_free(&hardware);
+	av_frame_unref(state->hardware_frame);
 	if (ret < 0)
 		return ret;
 	return lj_drain_video(state);
@@ -457,6 +452,7 @@ static int lj_render_audio(LJRenderState *state, const char *input,
 }
 
 static int lj_render_video(LJRenderState *state, const char *input,
+	const LJRenderOptions *options,
 	LJTimelineView *timeline, LJProgressCallback progress,
 	int *last_progress)
 {
@@ -496,6 +492,8 @@ static int lj_render_video(LJRenderState *state, const char *input,
 	if (ret < 0)
 		goto fail;
 	decoder->pkt_timebase = format->streams[stream_index]->time_base;
+	decoder->thread_count = options->threads > 0 ? options->threads : 0;
+	decoder->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;
 	ret = avcodec_open2(decoder, decoder_codec, NULL);
 	if (ret < 0)
 		goto fail;
@@ -718,7 +716,7 @@ int lj_render_file(const char *input, const char *output,
 	if (ret < 0)
 		goto done;
 	timeline.cursor = 0;
-	ret = lj_render_video(&state, input, &timeline, progress, &last_progress);
+	ret = lj_render_video(&state, input, options, &timeline, progress, &last_progress);
 	if (ret < 0)
 		goto done;
 	ret = lj_abort_if_cancelled(state.cancel, state.error, sizeof(state.error));
@@ -749,6 +747,10 @@ done:
 		}
 		avformat_free_context(state.output);
 	}
+	av_frame_free(&state.software_frame);
+	av_frame_free(&state.hardware_frame);
+	av_packet_free(&state.video_packet);
+	av_packet_free(&state.audio_packet);
 	sws_freeContext(state.scaler);
 	swr_free(&state.audio_resampler);
 	avcodec_free_context(&state.video_encoder);

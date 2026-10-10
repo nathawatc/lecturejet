@@ -184,6 +184,7 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	err = media.Render(ctx, cfg.Input, temporaryPath, result.Timeline, media.RenderOptions{
 		VideoCodec: codec, VideoTag: videoTag, VAAPIDevice: result.VAAPIDevice, OutputMono: cfg.Audio.Mono,
 		RNNoiseEnabled: cfg.Noise.Enabled, RNNoiseStrength: cfg.NoiseStrength(), RNNoiseModel: cfg.Noise.Model,
+		Threads: cfg.Threads,
 	}, func(percent int) {
 		if status != nil {
 			if wantHVC1 && percent > 95 {

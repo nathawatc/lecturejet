@@ -198,6 +198,7 @@ func Render(ctx context.Context, input, output string, source timeline.Timeline,
 			rnnoise_enabled:  boolInt(options.RNNoiseEnabled),
 			rnnoise_strength: C.double(options.RNNoiseStrength),
 			rnnoise_model:    cModel,
+			threads:          C.int(options.Threads),
 			cancel:           cancelPtr,
 		}
 		errorText := make([]byte, errorBufferSize)

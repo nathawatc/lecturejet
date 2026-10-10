@@ -30,6 +30,7 @@ typedef struct LJRenderOptions {
 	int rnnoise_enabled;
 	double rnnoise_strength;
 	const char *rnnoise_model;
+	int threads;
 	LJCancelToken *cancel;
 } LJRenderOptions;
 
