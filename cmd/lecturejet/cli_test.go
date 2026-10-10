@@ -540,3 +540,14 @@ func TestFlagErrHelpHandling(t *testing.T) {
 		t.Fatalf("expected flag.ErrHelp from parseAnalyzeArgs(--help), got: %v", err)
 	}
 }
+
+func TestParseRenderArgsWithInputNonTTY(t *testing.T) {
+	reader := strings.NewReader("")
+	_, interactive, _, err := parseRenderArgsWithInput(reader, []string{"input.mp4"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if interactive {
+		t.Fatalf("expected non-interactive for non-terminal reader, got interactive=true")
+	}
+}

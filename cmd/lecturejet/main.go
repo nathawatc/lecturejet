@@ -46,7 +46,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if args[0] == "analyze" {
 		return runAnalyze(args[1:], stdout, stderr)
 	}
-	cfg, interactive, codecExplicit, err := parseRenderArgs(args)
+	cfg, interactive, codecExplicit, err := parseRenderArgsWithInput(stdin, args)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			printRenderHelp(stdout)
@@ -135,12 +135,12 @@ func runAnalyze(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func isTerminal(file *os.File) bool {
-	if file == nil {
-		return false
+func isTerminal(v any) bool {
+	if file, ok := v.(*os.File); ok && file != nil {
+		info, err := file.Stat()
+		return err == nil && info.Mode()&os.ModeCharDevice != 0
 	}
-	info, err := file.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	return false
 }
 
 func printResult(out io.Writer, result app.Result) {

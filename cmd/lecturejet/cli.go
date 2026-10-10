@@ -170,6 +170,10 @@ func printAnalyzeHelp(out io.Writer) {
 }
 
 func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
+	return parseRenderArgsWithInput(os.Stdin, args)
+}
+
+func parseRenderArgsWithInput(in io.Reader, args []string) (config.Config, bool, bool, error) {
 	if len(args) < 1 || strings.HasPrefix(args[0], "-") {
 		if hasHelpFlag(args) {
 			return config.Config{}, false, false, flag.ErrHelp
@@ -231,7 +235,7 @@ func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
 		}
 		cfg.Threads = value
 	}
-	interactive := !*rf.nonInteractive && isTerminal(os.Stdin)
+	interactive := !*rf.nonInteractive && isTerminal(in)
 	codecExplicit := false
 	flags.Visit(func(f *flag.Flag) {
 		if f.Name == "video-codec" {
