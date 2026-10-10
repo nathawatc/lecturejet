@@ -22,12 +22,12 @@ func setRenderProgress(progress func(int)) {
 }
 
 //export lecturejetProgress
-func lecturejetProgress(percent C.int) {
+func lecturejetProgress(permille C.int) {
 	renderProgressMu.RLock()
 	progress := renderProgress
 	renderProgressMu.RUnlock()
 	if progress != nil {
-		progress(int(percent))
+		progress(int(permille))
 	}
 }
 

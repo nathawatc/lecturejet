@@ -85,6 +85,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx = app.WithWorkflow(ctx, 1, 3)
 	result, err := app.Analyze(ctx, cfg, stderr)
 	if err != nil {
 		return err
@@ -117,6 +118,7 @@ func runAnalyze(args []string, stdout, stderr io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	ctx = app.WithWorkflow(ctx, 1, 1)
 	result, err := app.Analyze(ctx, cfg, stderr)
 	if err != nil {
 		return err

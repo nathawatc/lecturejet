@@ -50,7 +50,7 @@ int lj_cancel_requested(const LJCancelToken *token);
 int lj_abort_if_cancelled(LJCancelToken *token, char *error, size_t error_size);
 void lj_set_interrupt_callback(AVFormatContext *format, LJCancelToken *token);
 uint32_t lj_fourcc(const char tag[4]);
-void lj_report_progress(LJProgressCallback callback, int percent, int *last_percent);
+void lj_report_progress(LJProgressCallback callback, int permille, int *last_permille);
 int64_t lj_stream_duration_ns(const AVStream *stream);
 int lj_set_video_quality(AVCodecContext *context, char *error, size_t error_size);
 int lj_alloc_vaapi_frames(AVBufferRef *device_ref, enum AVPixelFormat sw_format,

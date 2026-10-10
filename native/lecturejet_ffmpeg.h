@@ -34,7 +34,7 @@ typedef struct LJRenderOptions {
 	LJCancelToken *cancel;
 } LJRenderOptions;
 
-typedef void (*LJProgressCallback)(int percent);
+typedef void (*LJProgressCallback)(int permille);
 
 LJCancelToken *lj_cancel_token_create(void);
 void lj_cancel_token_cancel(LJCancelToken *token);

@@ -4,13 +4,13 @@
 #endif
 #endif
 
-extern void lecturejetProgress(int percent);
+extern void lecturejetProgress(int permille);
 
 #include "../../native/lecturejet_ffmpeg.c"
 
-static void lj_go_progress(int percent)
+static void lj_go_progress(int permille)
 {
-	lecturejetProgress(percent);
+	lecturejetProgress(permille);
 }
 
 int lj_render_file_go(const char *input, const char *output,

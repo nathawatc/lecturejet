@@ -63,7 +63,7 @@ type cancelOnRenderProgress struct {
 }
 
 func (w cancelOnRenderProgress) Write(p []byte) (int, error) {
-	if bytes.Contains(p, []byte(" 5%")) {
+	if bytes.Contains(p, []byte("5%")) || bytes.Contains(p, []byte("5.")) || bytes.Contains(p, []byte(" 5%")) {
 		w.cancel()
 	}
 	return len(p), nil

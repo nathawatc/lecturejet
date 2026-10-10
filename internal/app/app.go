@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"codeberg.org/nathawat/lecturejet/internal/analyze"
 	"codeberg.org/nathawat/lecturejet/internal/config"
@@ -35,8 +36,14 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 	if cfg.Threads <= 0 {
 		cfg.Threads = analyze.WorkerCount(0)
 	}
-	if status != nil {
-		fmt.Fprintln(status, "Analyzing audio...")
+	phase, totalPhases := getWorkflow(ctx, 1, 3)
+	reporter := NewProgressReporter(status, phase, totalPhases, "Analyzing audio silence...")
+	if reporter != nil {
+		defer func() {
+			if err != nil {
+				reporter.Abort()
+			}
+		}()
 	}
 	analysisCtx, cancelAnalysis := context.WithCancel(ctx)
 	defer cancelAnalysis()
@@ -57,7 +64,6 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 
 		splitter := newPCMBlockSplitter(blockSamples)
 		readBuffer := make([]float32, 8192)
-		lastBucket := -1
 
 		emit := func(block analyze.PCMBlock) error {
 			if err := analysisCtx.Err(); err != nil {
@@ -93,21 +99,12 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 				decodeErr <- err
 				return
 			}
-			if status != nil && info.DurationNS > 0 {
-				percent := int((start + int64(count)) * 100 / int64(timeline.SampleIndexAtOrAfter(info.DurationNS, cfg.AnalysisSampleRate())))
-				if percent > 100 {
-					percent = 100
-				}
-				bucket := percent / 5
-				if percent == 100 {
-					bucket = 20
-				}
-				if bucket != lastBucket {
-					fmt.Fprintf(status, "\rAnalyzing audio... %d%%  %s / %s", percent,
-						timeline.TimeForSamples(start+int64(count), cfg.AnalysisSampleRate()),
-						info.DurationNS)
-					lastBucket = bucket
-				}
+			if reporter != nil && info.DurationNS > 0 {
+				processed := start + int64(count)
+				totalSamples := int64(timeline.SampleIndexAtOrAfter(info.DurationNS, cfg.AnalysisSampleRate()))
+				pct := float64(processed) * 100.0 / float64(totalSamples)
+				mediaDur := time.Duration(timeline.TimeForSamples(processed, cfg.AnalysisSampleRate()))
+				reporter.Update(pct, mediaDur)
 			}
 		}
 	}()
@@ -128,8 +125,8 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 	if decodeErrValue, ok := <-decodeErr; ok && decodeErrValue != nil {
 		return Result{}, decodeErrValue
 	}
-	if status != nil {
-		fmt.Fprintln(status)
+	if reporter != nil {
+		reporter.Finish()
 	}
 	cuts := detector.Finish(audioSamples)
 	audioDuration := timeline.TimeForSamples(audioSamples, cfg.AnalysisSampleRate())
@@ -155,7 +152,7 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 		VAAPIDevice: cfg.VAAPIDevice}, nil
 }
 
-func Render(ctx context.Context, cfg config.Config, result Result, status io.Writer) error {
+func Render(ctx context.Context, cfg config.Config, result Result, status io.Writer) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -165,8 +162,21 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	if result.VAAPIDevice == "" {
 		return fmt.Errorf("no usable VAAPI device selected")
 	}
-	if status != nil {
-		fmt.Fprintf(status, "Rendering %s VAAPI...", strings.ToUpper(string(cfg.VideoCodec)))
+	_, totalPhases := getWorkflow(ctx, 2, 3)
+	renderPhase := 2
+	finalPhase := 3
+	if totalPhases <= 1 {
+		renderPhase = 1
+		finalPhase = 1
+	}
+	stageName := fmt.Sprintf("Rendering %s VAAPI...", strings.ToUpper(string(cfg.VideoCodec)))
+	reporter := NewProgressReporter(status, renderPhase, totalPhases, stageName)
+	if reporter != nil {
+		defer func() {
+			if err != nil {
+				reporter.Abort()
+			}
+		}()
 	}
 	directory := filepath.Dir(cfg.Output)
 	base := filepath.Base(cfg.Output)
@@ -184,9 +194,11 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 		VideoCodec: codec, VideoTag: videoTag, VAAPIDevice: result.VAAPIDevice, OutputMono: cfg.Audio.Mono,
 		RNNoiseEnabled: cfg.Noise.Enabled, RNNoiseStrength: cfg.NoiseStrength(), RNNoiseModel: cfg.Noise.Model,
 		Threads: cfg.Threads,
-	}, func(percent int) {
-		if status != nil {
-			fmt.Fprintf(status, "\rRendering %s VAAPI... %d%%", strings.ToUpper(string(cfg.VideoCodec)), percent)
+	}, func(permille int) {
+		if reporter != nil {
+			pct := float64(permille) / 10.0
+			mediaDur := time.Duration(float64(result.Duration) * (pct / 100.0))
+			reporter.Update(pct, mediaDur)
 		}
 	})
 	if err != nil {
@@ -195,11 +207,14 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if reporter != nil && totalPhases >= 3 {
+		reporter.SetStage(finalPhase, "Finalizing container...")
+	}
 	if err := Publish(temporaryPath, cfg.Output, cfg.Force); err != nil {
 		return err
 	}
-	if status != nil {
-		fmt.Fprintf(status, "\rRendering %s VAAPI... 100%%\n", strings.ToUpper(string(cfg.VideoCodec)))
+	if reporter != nil {
+		reporter.Finish()
 	}
 	return nil
 }

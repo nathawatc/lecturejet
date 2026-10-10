@@ -842,9 +842,10 @@ int lj_render_file(const char *input, const char *output,
 						(AVRational){1, 1000000000});
 				}
 				fallback_ns = source_ns + frame_duration_ns;
-				lj_report_progress(progress,
-					(int)av_rescale(source_ns, 100, timeline.source_end),
-					&last_progress);
+				if (timeline.source_end > 0) {
+					int permille = (int)av_rescale(source_ns, 1000, timeline.source_end);
+					lj_report_progress(progress, permille, &last_progress);
+				}
 				if (pre_roll_target_ns >= 0) {
 					if (source_ns < pre_roll_target_ns) {
 						av_frame_unref(video_frame);
@@ -948,9 +949,10 @@ int lj_render_file(const char *input, const char *output,
 			: av_rescale_q(source_pts, input_format->streams[video_index]->time_base,
 					(AVRational){1, 1000000000});
 		fallback_ns = source_ns + frame_duration_ns;
-		lj_report_progress(progress,
-			(int)av_rescale(source_ns, 100, timeline.source_end),
-			&last_progress);
+		if (timeline.source_end > 0) {
+			int permille = (int)av_rescale(source_ns, 1000, timeline.source_end);
+			lj_report_progress(progress, permille, &last_progress);
+		}
 		if (pre_roll_target_ns >= 0) {
 			if (source_ns < pre_roll_target_ns) {
 				av_frame_unref(video_frame);
@@ -1036,7 +1038,7 @@ int lj_render_file(const char *input, const char *output,
 	// Trailer
 	ret = av_write_trailer(state.output);
 	if (ret >= 0)
-		lj_report_progress(progress, 100, &last_progress);
+		lj_report_progress(progress, 1000, &last_progress);
 
 done:
 	if (ret < 0) {

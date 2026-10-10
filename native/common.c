@@ -85,20 +85,17 @@ int lj_set_video_quality(AVCodecContext *context, char *error, size_t error_size
 	return 0;
 }
 
-void lj_report_progress(LJProgressCallback callback, int percent, int *last_percent)
+void lj_report_progress(LJProgressCallback callback, int permille, int *last_permille)
 {
-	if (!callback || !last_percent)
+	if (!callback || !last_permille)
 		return;
-	if (percent < 0)
-		percent = 0;
-	if (percent > 100)
-		percent = 100;
-	int bucket = (percent / 5) * 5;
-	if (percent == 100)
-		bucket = 100;
-	if (bucket != *last_percent) {
-		callback(bucket);
-		*last_percent = bucket;
+	if (permille < 0)
+		permille = 0;
+	if (permille > 1000)
+		permille = 1000;
+	if (permille > *last_permille) {
+		callback(permille);
+		*last_permille = permille;
 	}
 }
 
