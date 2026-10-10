@@ -18,7 +18,7 @@ func TestDetectorPreservesShortSilenceAndCutsLongSilence(t *testing.T) {
 	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
 	speech.StartSample = 0
 	detector.Consume([]WindowMetric{speech})
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		quiet.StartSample = int64((i + 1) * 100)
 		detector.Consume([]WindowMetric{quiet})
 	}
@@ -33,7 +33,7 @@ func TestDetectorPreservesShortSilenceAndCutsLongSilence(t *testing.T) {
 	}
 	speech.StartSample = 0
 	detector.Consume([]WindowMetric{speech})
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		quiet.StartSample = int64((i + 1) * 100)
 		detector.Consume([]WindowMetric{quiet})
 	}
@@ -55,7 +55,7 @@ func TestAudioAboveThresholdEndsSilenceCandidate(t *testing.T) {
 	speech := WindowMetric{Samples: 100, RMS: 0.2, Peak: 0.2}
 	speech.StartSample = 0
 	detector.Consume([]WindowMetric{speech})
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		quiet.StartSample = int64((i + 1) * 100)
 		detector.Consume([]WindowMetric{quiet})
 	}
@@ -78,7 +78,7 @@ func TestDetectorMarginShrinksCutToProtectSpeech(t *testing.T) {
 	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
 	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
 	detector.Consume([]WindowMetric{speech})
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		quiet.StartSample = int64(100 + i*100)
 		detector.Consume([]WindowMetric{quiet})
 	}
@@ -101,7 +101,7 @@ func TestLowVolumeSpeechNearThresholdEndsCandidate(t *testing.T) {
 	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
 	nearThreshold := WindowMetric{StartSample: 600, Samples: 100, RMS: 0.015, Peak: 0.015}
 	detector.Consume([]WindowMetric{speech})
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		quiet.StartSample = int64(100 + i*100)
 		detector.Consume([]WindowMetric{quiet})
 	}
@@ -127,7 +127,7 @@ func TestAudioJustAboveThresholdEndsSilenceCandidate(t *testing.T) {
 	aboveThreshold := WindowMetric{StartSample: 600, Samples: 100, RMS: justAbove, Peak: justAbove}
 
 	detector.Consume([]WindowMetric{speech})
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		quiet.StartSample = int64(100 + i*100)
 		detector.Consume([]WindowMetric{quiet})
 	}
@@ -152,7 +152,7 @@ func TestAudioExactlyAtThresholdEndsSilenceCandidate(t *testing.T) {
 	exactThreshold := WindowMetric{StartSample: 600, Samples: 100, RMS: thresholdLevel, Peak: thresholdLevel}
 
 	detector.Consume([]WindowMetric{speech})
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		quiet.StartSample = int64(100 + i*100)
 		detector.Consume([]WindowMetric{quiet})
 	}
@@ -173,7 +173,7 @@ func TestSilenceExactlyAtMinimumIsRemoved(t *testing.T) {
 	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
 	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
 	detector.Consume([]WindowMetric{speech})
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		quiet.StartSample = int64(100 + i*100)
 		detector.Consume([]WindowMetric{quiet})
 	}
@@ -195,12 +195,12 @@ func TestShortImpulseInsideSilenceDoesNotCreateAggressiveCut(t *testing.T) {
 	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
 	impulse := WindowMetric{StartSample: 400, Samples: 100, RMS: 0.3, Peak: 0.8}
 	detector.Consume([]WindowMetric{speech})
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		quiet.StartSample = int64(100 + i*100)
 		detector.Consume([]WindowMetric{quiet})
 	}
 	detector.Consume([]WindowMetric{impulse})
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		quiet.StartSample = int64(500 + i*100)
 		detector.Consume([]WindowMetric{quiet})
 	}

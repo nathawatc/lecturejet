@@ -54,7 +54,7 @@ func AnalyzeBlocksTo(ctx context.Context, blocks <-chan PCMBlock, sampleRate, wi
 	jobs := make(chan analysisJob, workers*2)
 	results := make(chan analysisResult, workers*2)
 	workerDone := make(chan struct{})
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go func() {
 			defer func() { workerDone <- struct{}{} }()
 			for job := range jobs {
@@ -89,7 +89,7 @@ func AnalyzeBlocksTo(ctx context.Context, blocks <-chan PCMBlock, sampleRate, wi
 	}()
 
 	go func() {
-		for i := 0; i < workers; i++ {
+		for range workers {
 			<-workerDone
 		}
 		close(results)

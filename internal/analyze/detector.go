@@ -139,16 +139,10 @@ func Windows(samples []float32, sampleRate, windowMS int) []WindowMetric {
 	if sampleRate <= 0 || windowMS <= 0 {
 		return nil
 	}
-	windowSamples := sampleRate * windowMS / 1000
-	if windowSamples < 1 {
-		windowSamples = 1
-	}
+	windowSamples := max(sampleRate*windowMS/1000, 1)
 	metrics := make([]WindowMetric, 0, (len(samples)+windowSamples-1)/windowSamples)
 	for start := 0; start < len(samples); start += windowSamples {
-		end := start + windowSamples
-		if end > len(samples) {
-			end = len(samples)
-		}
+		end := min(start+windowSamples, len(samples))
 		metric := AnalyzeWindow(samples[start:end])
 		metric.StartSample = int64(start)
 		metrics = append(metrics, metric)

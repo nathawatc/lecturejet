@@ -50,7 +50,7 @@ func TestMappingLookup(t *testing.T) {
 			t.Errorf("MapSourceToOutput(%d)=%d, want %d", test.source, got, test.output)
 		}
 	}
-	for source := TimeNS(0); source < 100; source++ {
+	for source := range TimeNS(100) {
 		fromBinary, bi, ok := timeline.Lookup(source)
 		if !ok || bi < 0 || bi >= len(timeline.Segments()) {
 			t.Fatalf("lookup failed at %d: binary=%v/%d/%v", source, fromBinary, bi, ok)
@@ -88,7 +88,7 @@ func TestTimeNSFormatting(t *testing.T) {
 
 func TestFuzzLikeMappingProperties(t *testing.T) {
 	rng := rand.New(rand.NewSource(7))
-	for run := 0; run < 500; run++ {
+	for range 500 {
 		end := TimeNS(1 + rng.Intn(10_000))
 		cuts := make([]Segment, rng.Intn(20))
 		for i := range cuts {

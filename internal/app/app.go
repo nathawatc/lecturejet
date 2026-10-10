@@ -130,10 +130,7 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 	}
 	cuts := detector.Finish(audioSamples)
 	audioDuration := timeline.TimeForSamples(audioSamples, cfg.AnalysisSampleRate())
-	sourceDuration := info.DurationNS
-	if audioDuration > sourceDuration {
-		sourceDuration = audioDuration
-	}
+	sourceDuration := max(audioDuration, info.DurationNS)
 	if sourceDuration <= 0 {
 		return Result{}, fmt.Errorf("media duration is unavailable")
 	}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -19,12 +20,7 @@ func isHelpFlag(arg string) bool {
 }
 
 func hasHelpFlag(args []string) bool {
-	for _, arg := range args {
-		if isHelpFlag(arg) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(args, isHelpFlag)
 }
 
 func isTopLevelHelp(args []string) bool {

@@ -97,10 +97,7 @@ func TestSplitterChunksCrossingBoundary8192(t *testing.T) {
 	}
 
 	for offset := 0; offset < totalSamples; {
-		end := offset + chunkSize
-		if end > totalSamples {
-			end = totalSamples
-		}
+		end := min(offset+chunkSize, totalSamples)
 		chunk := original[offset:end]
 		if err := splitter.Push(chunk, int64(offset), emit); err != nil {
 			t.Fatalf("Push error: %v", err)
@@ -236,10 +233,7 @@ func TestSplitterNonZeroStartAndSequence(t *testing.T) {
 
 	chunkSize := 8192
 	for offset := 0; offset < totalSamples; {
-		end := offset + chunkSize
-		if end > totalSamples {
-			end = totalSamples
-		}
+		end := min(offset+chunkSize, totalSamples)
 		chunk := original[offset:end]
 		if err := splitter.Push(chunk, initialStart+int64(offset), emit); err != nil {
 			t.Fatalf("Push error: %v", err)
@@ -279,7 +273,7 @@ func TestSplitterRegressionOldBufferingFailure(t *testing.T) {
 		return nil
 	}
 
-	for r := 0; r < numReads; r++ {
+	for r := range numReads {
 		chunk := make([]float32, readSize)
 		for i := range chunk {
 			chunk[i] = float32(r*readSize + i)
@@ -325,7 +319,7 @@ func TestSplitterRegressionOldBufferingFailure(t *testing.T) {
 	// 2. Explicitly demonstrate that the OLD algorithm fails this requirement
 	oldBuffer := make([]float32, 0, blockSize)
 	var oldEmittedDuringPush []int
-	for r := 0; r < numReads; r++ {
+	for range numReads {
 		chunk := make([]float32, readSize)
 		oldBuffer = append(oldBuffer, chunk...)
 		// Old condition: if len(buffer) == blockSamples
@@ -409,10 +403,8 @@ func TestSplitterRaceAndOwnership(t *testing.T) {
 
 	var wg sync.WaitGroup
 	// 4 workers consuming and validating blocks concurrently
-	for w := 0; w < 4; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			for b := range blocksChan {
 				sum := float64(0)
 				for _, sample := range b.Samples {
@@ -422,7 +414,7 @@ func TestSplitterRaceAndOwnership(t *testing.T) {
 					t.Errorf("NaN encountered in worker")
 				}
 			}
-		}()
+		})
 	}
 
 	emit := func(b analyze.PCMBlock) error {
@@ -436,10 +428,7 @@ func TestSplitterRaceAndOwnership(t *testing.T) {
 	}
 
 	for offset := int64(0); offset < totalSamples; offset += chunkSize {
-		end := offset + chunkSize
-		if end > totalSamples {
-			end = totalSamples
-		}
+		end := min(offset+chunkSize, totalSamples)
 		thisChunk := chunk[:end-offset]
 		if err := splitter.Push(thisChunk, offset, emit); err != nil {
 			t.Fatalf("Push error: %v", err)

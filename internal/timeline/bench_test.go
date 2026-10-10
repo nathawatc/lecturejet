@@ -8,7 +8,7 @@ var benchmarkSinkIndex int64
 func benchmarkTimeline(b *testing.B) Timeline {
 	segments := make([]Segment, 0, 20_001)
 	position := TimeNS(0)
-	for i := 0; i < 20_000; i++ {
+	for i := range 20_000 {
 		action := Keep
 		if i%2 == 1 {
 			action = Cut

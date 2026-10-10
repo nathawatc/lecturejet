@@ -44,10 +44,7 @@ func (s *pcmBlockSplitter) Push(chunk []float32, start int64, emit func(analyze.
 			s.buffer = make([]float32, 0, s.blockSize)
 		}
 		remaining := s.blockSize - len(s.buffer)
-		toCopy := len(chunk) - consumed
-		if toCopy > remaining {
-			toCopy = remaining
-		}
+		toCopy := min(len(chunk)-consumed, remaining)
 		s.buffer = append(s.buffer, chunk[consumed:consumed+toCopy]...)
 		consumed += toCopy
 

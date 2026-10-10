@@ -157,10 +157,7 @@ func (p *ProgressReporter) render(pct float64, mediaDuration time.Duration) {
 	}
 
 	const barWidth = 10
-	filled := int((pct / 100.0) * float64(barWidth))
-	if filled > barWidth {
-		filled = barWidth
-	}
+	filled := min(int((pct/100.0)*float64(barWidth)), barWidth)
 	if filled < 0 {
 		filled = 0
 	}
