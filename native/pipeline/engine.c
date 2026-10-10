@@ -73,6 +73,7 @@ LJRenderEngine *lj_render_init(const char *input, const char *output,
 	engine->cancel = options->cancel;
 	lj_progress_init(&engine->progress, options->progress);
 	engine->video.last_pts = AV_NOPTS_VALUE;
+	engine->video.last_dts = AV_NOPTS_VALUE;
 	engine->video.pre_roll_target_ns = -1;
 	engine->audio.pre_roll_sample = -1;
 

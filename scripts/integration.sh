@@ -47,7 +47,7 @@ assert_monotonic_timestamps() {
 	ffprobe -v error -select_streams v:0 -show_entries packet=pts,dts -of csv=p=0 "$file" |
 		awk -F, 'BEGIN { last_pts=-1; last_dts=-1 }
 			$1 != "N/A" && $1 < last_pts { exit 1 }
-			$2 != "N/A" && $2 < last_dts { exit 1 }
+			$2 != "N/A" && $2 <= last_dts { exit 1 }
 			{ if ($1 != "N/A") last_pts=$1; if ($2 != "N/A") last_dts=$2 }'
 }
 

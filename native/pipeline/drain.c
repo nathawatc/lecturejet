@@ -15,6 +15,16 @@ static int lj_write_packet(LJRenderEngine *engine, AVPacket *packet, AVStream *s
 		packet->dts = 0;
 	if (packet->pts != AV_NOPTS_VALUE && packet->pts < 0)
 		packet->pts = 0;
+	if (stream == engine->video.out_stream) {
+		LJVideoPipeline *video = &engine->video;
+		if (packet->dts != AV_NOPTS_VALUE) {
+			if (video->last_dts != AV_NOPTS_VALUE && packet->dts <= video->last_dts)
+				packet->dts = video->last_dts + 1;
+			video->last_dts = packet->dts;
+		}
+		if (packet->pts != AV_NOPTS_VALUE && packet->pts < packet->dts)
+			packet->pts = packet->dts;
+	}
 	ret = av_interleaved_write_frame(engine->output, packet);
 	if (ret < 0)
 		lj_fferror(engine->error, sizeof(engine->error), "writing output packet", ret);

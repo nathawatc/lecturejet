@@ -25,6 +25,7 @@ typedef struct LJVideoPipeline {
 	AVFrame *filtered; /* graph output */
 	AVPacket *packet;  /* encoder output */
 	int64_t last_pts;  /* last encoder PTS, AV_NOPTS_VALUE before the first frame */
+	int64_t last_dts;  /* last output DTS, AV_NOPTS_VALUE before the first packet */
 	int64_t fallback_ns;
 	int64_t frame_duration_ns;
 	int64_t pre_roll_target_ns; /* drop frames before this after a seek, -1 when idle */

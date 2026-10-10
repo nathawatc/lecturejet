@@ -21,6 +21,7 @@ int lj_video_open_encoder(LJRenderEngine *engine, const LJRenderOptions *options
 	AVRational fps = av_guess_frame_rate(engine->input, source, NULL);
 	video->frame_duration_ns = fps.num > 0 && fps.den > 0
 		? av_rescale_q(1, (AVRational){fps.den, fps.num}, LJ_NS_Q) : LJ_FALLBACK_FRAME_NS;
+	video->last_dts = AV_NOPTS_VALUE;
 	ret = lj_video_encoder_open(&video->config, engine->vaapi_device,
 		source->codecpar->width, source->codecpar->height, fps,
 		engine->output->oformat->flags & AVFMT_GLOBALHEADER, &video->encoder,
@@ -109,6 +110,9 @@ int lj_video_pull_filtered(LJRenderEngine *engine, int64_t pts)
 {
 	LJVideoPipeline *video = &engine->video;
 	AVFrame *filtered = video->filtered;
+	int64_t min_step = av_rescale_q(video->frame_duration_ns, LJ_NS_Q, video->encoder->time_base);
+	if (min_step <= 0)
+		min_step = 1;
 	for (;;) {
 		int ret = av_buffersink_get_frame(video->filter.sink, filtered);
 		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
@@ -118,7 +122,7 @@ int lj_video_pull_filtered(LJRenderEngine *engine, int64_t pts)
 		if (pts != AV_NOPTS_VALUE)
 			filtered->pts = pts;
 		else if (video->last_pts != AV_NOPTS_VALUE && filtered->pts <= video->last_pts)
-			filtered->pts = video->last_pts + 1;
+			filtered->pts = video->last_pts + min_step;
 		ret = lj_video_send_frame(engine, filtered);
 		av_frame_unref(filtered);
 		if (ret < 0)
@@ -156,8 +160,11 @@ static int lj_video_encode_mapped(LJRenderEngine *engine, AVFrame *frame, size_t
 	LJVideoPipeline *video = &engine->video;
 	int64_t output_ns = lj_timeline_map_ns(&engine->timeline, index, source_ns);
 	int64_t pts = av_rescale_q(output_ns, LJ_NS_Q, video->encoder->time_base);
+	int64_t min_step = av_rescale_q(video->frame_duration_ns, LJ_NS_Q, video->encoder->time_base);
+	if (min_step <= 0)
+		min_step = 1;
 	if (video->last_pts != AV_NOPTS_VALUE && pts <= video->last_pts)
-		pts = video->last_pts + 1;
+		pts = video->last_pts + min_step;
 	return lj_video_encode_frame(engine, frame, pts);
 }
 
