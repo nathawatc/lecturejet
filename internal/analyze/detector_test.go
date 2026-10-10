@@ -245,3 +245,89 @@ func TestDetectorValidation(t *testing.T) {
 		t.Fatal("expected error for Inf threshold")
 	}
 }
+
+func TestRMSPrecision(t *testing.T) {
+	for _, n := range []int{1, 7, 8, 15, 16, 31, 32, 63, 480, 9600} {
+		samples := make([]float32, n)
+		for i := range samples {
+			samples[i] = float32(math.Sin(float64(i)*0.05)) * 0.7
+		}
+		var expectedSum float64
+		for _, s := range samples {
+			expectedSum += float64(s) * float64(s)
+		}
+		expectedRMS := float32(math.Sqrt(expectedSum / float64(n)))
+
+		gotGenericSum := sumSquaresGeneric(samples)
+		gotGenericRMS := float32(math.Sqrt(gotGenericSum / float64(n)))
+		diffGeneric := math.Abs(float64(expectedRMS - gotGenericRMS))
+		if diffGeneric > 1e-6 {
+			t.Fatalf("len %d: generic RMS diff=%v, want <= 1e-6", n, diffGeneric)
+		}
+
+		gotRMS := RMS(samples)
+		diff := math.Abs(float64(expectedRMS - gotRMS))
+		if diff > 1e-5 {
+			t.Fatalf("len %d: vectorized RMS diff=%v, want <= 1e-5", n, diff)
+		}
+	}
+}
+
+func TestZeroCrossingRateCorrectness(t *testing.T) {
+	if ZeroCrossingRate(nil) != 0 || ZeroCrossingRate([]float32{0.5}) != 0 {
+		t.Fatal("empty or single-element slice should have 0 zero crossings")
+	}
+
+	for n := 2; n <= 100; n++ {
+		samples := make([]float32, n)
+		for i := range samples {
+			if (i/2)%2 == 0 {
+				samples[i] = 0.5
+			} else {
+				samples[i] = -0.5
+			}
+		}
+
+		expected := 0
+		for i := 0; i < n-1; i++ {
+			a, b := samples[i], samples[i+1]
+			if (a > 0 && b < 0) || (a < 0 && b > 0) {
+				expected++
+			}
+		}
+
+		gotGeneric := zcrGeneric(samples)
+		if gotGeneric != expected {
+			t.Fatalf("len %d: generic ZCR=%d, want %d", n, gotGeneric, expected)
+		}
+
+		got := ZeroCrossingRate(samples)
+		if got != expected {
+			t.Fatalf("len %d: ZeroCrossingRate=%d, want %d", n, got, expected)
+		}
+	}
+}
+
+func TestZeroAllocations(t *testing.T) {
+	samples := repeatedSamples(480, 0.08)
+	allocs := testing.AllocsPerRun(1000, func() {
+		_ = AnalyzeWindow(samples)
+	})
+	if allocs != 0 {
+		t.Fatalf("AnalyzeWindow allocs=%v, want 0", allocs)
+	}
+
+	allocsRMS := testing.AllocsPerRun(1000, func() {
+		_ = RMS(samples)
+	})
+	if allocsRMS != 0 {
+		t.Fatalf("RMS allocs=%v, want 0", allocsRMS)
+	}
+
+	allocsZCR := testing.AllocsPerRun(1000, func() {
+		_ = ZeroCrossingRate(samples)
+	})
+	if allocsZCR != 0 {
+		t.Fatalf("ZeroCrossingRate allocs=%v, want 0", allocsZCR)
+	}
+}

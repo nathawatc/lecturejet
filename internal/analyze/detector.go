@@ -13,6 +13,7 @@ type WindowMetric struct {
 	Samples     int
 	RMS         float32
 	Peak        float32
+	ZCR         int
 }
 
 type Detector struct {
@@ -102,33 +103,36 @@ func (d *Detector) finishCandidate(endSample int64) {
 	d.cuts = append(d.cuts, timeline.Segment{Start: start, End: end, Action: timeline.Cut})
 }
 
-func AnalyzeWindow(samples []float32) WindowMetric {
+func RMS(samples []float32) float32 {
 	if len(samples) == 0 {
+		return 0
+	}
+	sum := sumSquares(samples)
+	return float32(math.Sqrt(sum / float64(len(samples))))
+}
+
+func ZeroCrossingRate(samples []float32) int {
+	return zeroCrossingRate(samples)
+}
+
+func AnalyzeWindow(samples []float32) WindowMetric {
+	n := len(samples)
+	if n == 0 {
 		return WindowMetric{}
 	}
-	var sum float64
-	var peak float32
-	nonFinite := false
-	for _, sample := range samples {
-		if !IsFinite(sample) {
-			nonFinite = true
-			continue
-		}
-		value := float32(math.Abs(float64(sample)))
-		if value > peak {
-			peak = value
-		}
-		sum += float64(sample) * float64(sample)
-	}
-	if nonFinite {
+	sum := sumSquares(samples)
+	peak := peakAbs(samples)
+	if !IsFinite(float32(sum)) || !IsFinite(peak) {
 		// Never turn corrupt PCM into an apparent silent window.
-		return WindowMetric{Samples: len(samples), RMS: 1, Peak: 1}
+		return WindowMetric{Samples: n, RMS: 1, Peak: 1}
 	}
-	return WindowMetric{Samples: len(samples), RMS: float32(math.Sqrt(sum / float64(len(samples)))), Peak: peak}
+	rms := float32(math.Sqrt(sum / float64(n)))
+	zcr := zeroCrossingRate(samples)
+	return WindowMetric{Samples: n, RMS: rms, Peak: peak, ZCR: zcr}
 }
 
 func IsFinite(value float32) bool {
-	return !math.IsNaN(float64(value)) && !math.IsInf(float64(value), 0)
+	return math.Float32bits(value)&0x7f800000 != 0x7f800000
 }
 
 func Windows(samples []float32, sampleRate, windowMS int) []WindowMetric {
