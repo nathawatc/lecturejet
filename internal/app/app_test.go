@@ -69,6 +69,22 @@ func (w cancelOnRenderProgress) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func TestCreateTemporaryOutputPermissions(t *testing.T) {
+	dir := t.TempDir()
+	path, err := createTemporaryOutput(dir, "output.mp4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o644 {
+		t.Fatalf("expected permissions 0644, got %v", info.Mode().Perm())
+	}
+}
+
 func TestRenderCancellationRemovesTemporaryOutput(t *testing.T) {
 	path := os.Getenv("LECTUREJET_TEST_RENDER_MEDIA")
 	device := os.Getenv("LECTUREJET_VAAPI_DEVICE")

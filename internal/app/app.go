@@ -249,5 +249,9 @@ func createTemporaryOutput(directory, base string) (string, error) {
 		_ = os.Remove(path)
 		return "", err
 	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
 	return path, nil
 }
