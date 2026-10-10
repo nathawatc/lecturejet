@@ -79,7 +79,10 @@ int lj_set_video_quality(AVCodecContext *context, char *error, size_t error_size
 		lj_fferror(error, error_size, "setting VAAPI CQP mode", ret);
 		return ret;
 	}
-	return ret;
+	if (context->priv_data)
+		av_opt_set_int(context->priv_data, "compression_level", 1, 0);
+	av_opt_set_int(context, "compression_level", 1, AV_OPT_SEARCH_CHILDREN);
+	return 0;
 }
 
 void lj_report_progress(LJProgressCallback callback, int percent, int *last_percent)
