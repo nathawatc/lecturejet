@@ -1,16 +1,8 @@
 package media
 
 import (
-	"codeberg.org/nathawat/lecturejet/internal/config"
 	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
-
-func VAAPIEncoderName(codec config.VideoCodec) string {
-	if codec == config.VideoHEVC {
-		return "hevc_vaapi"
-	}
-	return "h264_vaapi"
-}
 
 type ProbeInfo struct {
 	DurationNS  timeline.TimeNS

@@ -4,7 +4,6 @@ package media
 
 import (
 	"context"
-	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -25,73 +24,6 @@ func TestRenderRejectsEmptyTimeline(t *testing.T) {
 	err := Render(context.Background(), "not-used.mp4", "output.mp4", timeline.Timeline{}, RenderOptions{}, nil)
 	if err == nil || !strings.Contains(err.Error(), "no segments") {
 		t.Fatalf("expected error for empty timeline, got: %v", err)
-	}
-}
-
-func TestRemuxCancellationReturnsContextCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := RemuxHEVCHVC1(ctx, "not-used", filepath.Join(t.TempDir(), "output.mp4")); !errors.Is(err, context.Canceled) {
-		t.Fatalf("remux error=%v, want context cancellation", err)
-	}
-}
-
-func TestRemuxRejectsNonHEVCFixture(t *testing.T) {
-	path := os.Getenv("LECTUREJET_TEST_MEDIA")
-	if path == "" {
-		t.Skip("set LECTUREJET_TEST_MEDIA to run remux bridge test")
-	}
-	path, err := filepath.Abs(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	info, err := Probe(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(info.VideoCodec, "hevc") {
-		t.Skip("fixture contains HEVC")
-	}
-	err = RemuxHEVCHVC1(context.Background(), path,
-		filepath.Join(t.TempDir(), "output.mp4"))
-	if err == nil || !strings.Contains(err.Error(), "no HEVC video stream") {
-		t.Fatalf("remux error=%v, want missing HEVC error", err)
-	}
-}
-
-func TestRemuxHEVCFixturePreservesStreams(t *testing.T) {
-	path := os.Getenv("LECTUREJET_TEST_HEVC_MEDIA")
-	if path == "" {
-		t.Skip("set LECTUREJET_TEST_HEVC_MEDIA to run HEVC remux test")
-	}
-	path, err := filepath.Abs(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	before, err := Probe(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !before.Video || !strings.Contains(before.VideoCodec, "hevc") {
-		t.Fatalf("fixture is not HEVC: %+v", before)
-	}
-	output := filepath.Join(t.TempDir(), "output.mp4")
-	if err := RemuxHEVCHVC1(context.Background(), path, output); err != nil {
-		t.Fatal(err)
-	}
-	after, err := Probe(output)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !after.Video || !after.Audio || !strings.Contains(after.VideoCodec, "hevc") {
-		t.Fatalf("remux lost streams: before=%+v after=%+v", before, after)
-	}
-	delta := after.DurationNS - before.DurationNS
-	if delta < 0 {
-		delta = -delta
-	}
-	if delta > 100_000_000 {
-		t.Fatalf("remux duration delta=%d ns", delta)
 	}
 }
 
@@ -195,7 +127,7 @@ func TestFixtureVAAPIProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, codec := range []string{VAAPIEncoderName(config.VideoH264), VAAPIEncoderName(config.VideoHEVC)} {
+	for _, codec := range []string{string(config.VideoH264), string(config.VideoHEVC)} {
 		if err := ProbeVAAPI(device, codec, info.VideoWidth, info.VideoHeight); err != nil {
 			t.Skipf("%s unavailable on %s: %v", codec, device, err)
 		}

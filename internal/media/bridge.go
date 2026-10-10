@@ -3,13 +3,12 @@
 package media
 
 /*
-#cgo pkg-config: libavformat libavcodec libavutil libswresample libswscale libavfilter
-#cgo CFLAGS: -I${SRCDIR}/../../native
-#include "lecturejet_ffmpeg.h"
+#cgo pkg-config: libavformat libavcodec libavutil libswresample libavfilter
+#cgo CFLAGS: -I${SRCDIR}/../../native/include -Wall -Wextra -pedantic -std=gnu11
+#include "lecturejet.h"
 #include <stdlib.h>
-int lj_render_file_go(const char *input, const char *output,
-                      const LJSegment *segments, size_t segment_count,
-                      const LJRenderOptions *options, char *error, size_t error_size);
+
+void lj_go_progress(int permille);
 */
 import "C"
 
@@ -188,7 +187,11 @@ func Render(ctx context.Context, input, output string, source timeline.Timeline,
 		}
 		cSegments := make([]C.LJSegment, len(segments))
 		for i, segment := range segments {
-			cSegments[i] = C.LJSegment{start_ns: C.int64_t(segment.Start), end_ns: C.int64_t(segment.End), action: C.int(segment.Action)}
+			cSegments[i] = C.LJSegment{
+				start_ns: C.int64_t(segment.Start),
+				end_ns:   C.int64_t(segment.End),
+				action:   C.int(segment.Action),
+			}
 		}
 		cOptions := C.LJRenderOptions{
 			video_codec:      cCodec,
@@ -200,12 +203,25 @@ func Render(ctx context.Context, input, output string, source timeline.Timeline,
 			rnnoise_model:    cModel,
 			threads:          C.int(options.Threads),
 			cancel:           cancelPtr,
+			progress:         C.LJProgressCallback(C.lj_go_progress),
 		}
 		errorText := make([]byte, errorBufferSize)
 		setRenderProgress(progress)
 		defer setRenderProgress(nil)
-		ret := C.lj_render_file_go(cInput, cOutput, (*C.LJSegment)(unsafe.Pointer(&cSegments[0])), C.size_t(len(cSegments)),
-			&cOptions, (*C.char)(unsafe.Pointer(&errorText[0])), C.size_t(len(errorText)))
+
+		engine := C.lj_render_init(cInput, cOutput, (*C.LJSegment)(unsafe.Pointer(&cSegments[0])),
+			C.size_t(len(cSegments)), &cOptions, (*C.char)(unsafe.Pointer(&errorText[0])), C.size_t(len(errorText)))
+		if engine == nil {
+			if ctx != nil && ctx.Err() != nil {
+				renderError = ctx.Err()
+				return
+			}
+			renderError = fmt.Errorf("%s", cString(errorText))
+			return
+		}
+		defer C.lj_render_close(&engine)
+
+		ret := C.lj_render_run(engine, (*C.char)(unsafe.Pointer(&errorText[0])), C.size_t(len(errorText)))
 		if ctx != nil && ctx.Err() != nil {
 			renderError = ctx.Err()
 			return
@@ -216,35 +232,6 @@ func Render(ctx context.Context, input, output string, source timeline.Timeline,
 		}
 	})
 	return renderError
-}
-
-func RemuxHEVCHVC1(ctx context.Context, input, output string) (remuxError error) {
-	cancel, err := newCancelHandle(ctx)
-	if err != nil {
-		return err
-	}
-	defer cancel.close()
-	withRenderCall(func() {
-		cInput := C.CString(input)
-		defer C.free(unsafe.Pointer(cInput))
-		cOutput := C.CString(output)
-		defer C.free(unsafe.Pointer(cOutput))
-		var cancelPtr *C.LJCancelToken
-		if cancel != nil {
-			cancelPtr = cancel.ptr
-		}
-		errorText := make([]byte, errorBufferSize)
-		ret := C.lj_remux_hevc_hvc1(cInput, cOutput, cancelPtr,
-			(*C.char)(unsafe.Pointer(&errorText[0])), C.size_t(len(errorText)))
-		if ctx != nil && ctx.Err() != nil {
-			remuxError = ctx.Err()
-			return
-		}
-		if ret < 0 {
-			remuxError = fmt.Errorf("%s", cString(errorText))
-		}
-	})
-	return remuxError
 }
 
 func boolInt(value bool) C.int {

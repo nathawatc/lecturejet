@@ -31,9 +31,8 @@ func ProbeVAAPIChoices(info media.ProbeInfo, preferred config.VideoCodec, reques
 	}
 	choices := make([]VAAPIChoice, 0, len(codecs))
 	for _, codec := range codecs {
-		encoder := media.VAAPIEncoderName(codec)
 		for _, device := range devices {
-			if err := media.ProbeVAAPI(device, encoder, info.VideoWidth, info.VideoHeight); err == nil {
+			if err := media.ProbeVAAPI(device, string(codec), info.VideoWidth, info.VideoHeight); err == nil {
 				choices = append(choices, VAAPIChoice{Codec: codec, Device: device})
 				break
 			}

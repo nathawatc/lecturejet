@@ -185,7 +185,7 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 		return fmt.Errorf("creating temporary output: %w", err)
 	}
 	defer os.Remove(temporaryPath)
-	codec := media.VAAPIEncoderName(cfg.VideoCodec)
+	codec := string(cfg.VideoCodec)
 	videoTag := ""
 	if cfg.VideoCodec == config.VideoHEVC {
 		videoTag = string(cfg.HEVCCodecTag)

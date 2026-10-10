@@ -34,7 +34,3 @@ func OpenAudio(ctx context.Context, path string, channels int, rnnoise bool, str
 func Render(ctx context.Context, input, output string, source timeline.Timeline, options RenderOptions, progress func(int)) error {
 	return errUnsupported
 }
-
-func RemuxHEVCHVC1(ctx context.Context, input, output string) error {
-	return errUnsupported
-}

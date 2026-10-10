@@ -2,10 +2,24 @@
 
 Guidelines for FFmpeg C code and CGO bridge. Back to [AGENTS.md](../AGENTS.md).
 
+## Module Layout
+
+- `include/`: `lecturejet.h` (minimal public C/cgo API) and `types.h` (internal pipeline state).
+- `config/`: `encoder_profile.{h,c}` (SSOT for VAAPI HEVC/H.264 and AAC encoder parameters).
+- `hw/`: `vaapi_device.{h,c}` (hardware device and frame context management).
+- `filter/`: `filtergraph.{h,c}` (hardware upload, scale_vaapi, format negotiation).
+- `pipeline/`: Modular streaming pipeline
+  (`demux.c`, `video_pipeline.c`, `audio_pipeline.c`, `drain.c`, `engine.c`).
+- `audio/`: Modular audio decoder, resampler, and RNNoise (`audio.h`, `decoder.c`, `resample.c`, `rnnoise.c`).
+- `timeline/`: `timeline.{h,c}` (source-to-output timestamp and sample mapping).
+- `probe/`: `probe.c` (media container and stream capability probing).
+- `common/`: Shared helpers (`common.h`, `errors.c`, `cancel.c`, `progress.c`, `samples.c`).
+- `lecturejet.c`: Unity compilation unit including all module sources for cgo.
+
 ## Resource Ownership
 
 - **Explicit Lifecycle**: Every `AVFrame`, `AVPacket`, `AVFormatContext`,
-  `AVCodecContext`, `AVFilterGraph`, `SwrContext`, and `SwsContext` has
+  `AVCodecContext`, `AVFilterGraph`, and `SwrContext` has
   exactly one deterministic cleanup path.
 - **Error Cleanup**: In error paths, free partially allocated contexts
   immediately (`goto done` or `goto fail` with centralized `NULL`-safe frees).
@@ -14,7 +28,7 @@ Guidelines for FFmpeg C code and CGO bridge. Back to [AGENTS.md](../AGENTS.md).
 - **Pointer Pinning**: Do not retain unpinned Go pointers across C calls or
   store Go pointers in C structures.
 - **Bounded Error Buffers**: All native C entrypoint functions (`lj_probe_*`,
-  `lj_audio_*`, `lj_render_*`, `lj_remux_*`) must NUL-terminate `error` on
+  `lj_audio_*`, `lj_render_*`) must NUL-terminate `error` on
   entry (`error[0] = '\0'`) and write bounded messages via `snprintf`/`lj_error`.
   Propagate native FFmpeg return codes whenever available.
 
@@ -27,8 +41,7 @@ Guidelines for FFmpeg C code and CGO bridge. Back to [AGENTS.md](../AGENTS.md).
 - **Strict Configuration**: Fail with diagnostics if an explicitly requested
   VAAPI device or codec is unsupported; never fall back silently.
 - **HEVC Codec Tags**: Tag HEVC streams as `hev1` or `hvc1` directly during
-  render (`codecpar->codec_tag`), avoiding secondary remux passes. Stream-copy
-  remux (`lj_remux_hevc_hvc1`) remains available for standalone retagging.
+  render (`codecpar->codec_tag`), avoiding secondary remux passes.
 - **Keyframe Seeking Over Silence**: On silent gaps >= 3.0 seconds, seek backward
   to the keyframe before the next speech segment and discard pre-roll frames,
   bypassing full linear decode. Short gaps (< 3.0s) remain linearly decoded.

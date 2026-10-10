@@ -13,12 +13,12 @@ Linux CLI tool for conservatively removing silence from recorded lectures.
   worker streaming.
 - `internal/timeline/`: Immutable timeline segments and source-to-output
   timestamp mapping.
-- `internal/media/`: Go/CGO boundary, probing, audio decoding, render
-  dispatch, and remuxing.
+- `internal/media/`: Go/CGO boundary, probing, audio decoding, and render
+  dispatch.
 - `internal/app/`: Analyze and render workflows, preflight checks, temporary
   file lifecycle, and publication.
-- `native/`: Modular FFmpeg VAAPI encoder, audio decoder, filtergraph, and
-  remux implementation.
+- `native/`: Modular FFmpeg VAAPI encoder, audio decoder, and filtergraph
+  implementation.
 - `scripts/`: Synthetic fixture generator (`generate_synthetic.sh`) and
   end-to-end integration suite (`integration.sh`).
 - `Makefile`: Build, test, race, vet, bench, and integration targets.
