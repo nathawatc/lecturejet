@@ -173,6 +173,14 @@ if [[ "$hevc_supported" -eq 1 ]]; then
 	[[ "$hevc_packets" == "$hvc1_packets" ]]
 	assert_monotonic_timestamps "$hvc1_output"
 
+	# Verify configuration record (hvcC extradata) is populated
+	[[ $(probe_stream v:0 extradata_size "$hvc1_output") -gt 0 ]]
+
+	# Verify decoded video frames between hev1 and hvc1 match deterministically
+	hevc_frame_hashes=$(ffmpeg -v error -i "$hevc_output" -map 0:v:0 -f framemd5 -)
+	hvc1_frame_hashes=$(ffmpeg -v error -i "$hvc1_output" -map 0:v:0 -f framemd5 -)
+	[[ "$hevc_frame_hashes" == "$hvc1_frame_hashes" ]]
+
 	echo "HEVC VAAPI integration passed: hev1 and hvc1 tags"
 fi
 

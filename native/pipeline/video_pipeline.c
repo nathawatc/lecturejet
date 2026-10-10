@@ -22,9 +22,11 @@ int lj_video_open_encoder(LJRenderEngine *engine, const LJRenderOptions *options
 	video->frame_duration_ns = fps.num > 0 && fps.den > 0
 		? av_rescale_q(1, (AVRational){fps.den, fps.num}, LJ_NS_Q) : LJ_FALLBACK_FRAME_NS;
 	video->last_dts = AV_NOPTS_VALUE;
+	int global_header = (engine->output->oformat->flags & AVFMT_GLOBALHEADER) &&
+		video->config.codec_id != AV_CODEC_ID_HEVC;
 	ret = lj_video_encoder_open(&video->config, engine->vaapi_device,
 		source->codecpar->width, source->codecpar->height, fps,
-		engine->output->oformat->flags & AVFMT_GLOBALHEADER, &video->encoder,
+		global_header, &video->encoder,
 		engine->error, sizeof(engine->error));
 	if (ret < 0)
 		return ret;
@@ -34,6 +36,10 @@ int lj_video_open_encoder(LJRenderEngine *engine, const LJRenderOptions *options
 	ret = avcodec_parameters_from_context(video->out_stream->codecpar, video->encoder);
 	if (ret < 0)
 		return ret;
+	if (video->config.codec_id == AV_CODEC_ID_HEVC) {
+		av_freep(&video->out_stream->codecpar->extradata);
+		video->out_stream->codecpar->extradata_size = 0;
+	}
 	if (video->config.codec_tag)
 		video->out_stream->codecpar->codec_tag = video->config.codec_tag;
 	video->out_stream->time_base = video->encoder->time_base;
