@@ -9,10 +9,15 @@ typedef struct LJRenderState {
 	AVCodecContext *audio_encoder;
 	AVBufferRef *vaapi_device;
 	AVBufferRef *hw_frames;
-	SwsContext *scaler;
+	AVFilterGraph *filter_graph;
+	AVFilterContext *buffersrc_ctx;
+	AVFilterContext *buffersink_ctx;
+	int filter_in_format;
+	int filter_in_width;
+	int filter_in_height;
+	enum AVPixelFormat filter_in_sw_format;
+	AVFrame *filtered_frame;
 	SwrContext *audio_resampler;
-	AVFrame *software_frame;
-	AVFrame *hardware_frame;
 	AVPacket *video_packet;
 	AVPacket *audio_packet;
 	int audio_channels;
@@ -328,77 +333,224 @@ static int lj_send_and_drain_video(LJRenderState *state, AVFrame *frame)
 	return lj_drain_video(state);
 }
 
+static int lj_frame_needs_scaling(const LJRenderState *state, const AVFrame *frame)
+{
+	if (frame->format != AV_PIX_FMT_VAAPI)
+		return 1;
+	if (frame->width != state->video_encoder->width ||
+	    frame->height != state->video_encoder->height)
+		return 1;
+	if (!frame->hw_frames_ctx)
+		return 1;
+	AVHWFramesContext *hwfc = (AVHWFramesContext *)frame->hw_frames_ctx->data;
+	if (hwfc->sw_format != AV_PIX_FMT_NV12)
+		return 1;
+	return 0;
+}
+
+static int lj_filter_matches(const LJRenderState *state, const AVFrame *frame)
+{
+	if (!state->filter_graph)
+		return 0;
+	if (state->filter_in_format != frame->format ||
+	    state->filter_in_width != frame->width ||
+	    state->filter_in_height != frame->height)
+		return 0;
+	if (frame->format == AV_PIX_FMT_VAAPI) {
+		enum AVPixelFormat sw_fmt = AV_PIX_FMT_NONE;
+		if (frame->hw_frames_ctx) {
+			AVHWFramesContext *hwfc = (AVHWFramesContext *)frame->hw_frames_ctx->data;
+			sw_fmt = hwfc->sw_format;
+		}
+		if (state->filter_in_sw_format != sw_fmt)
+			return 0;
+	}
+	return 1;
+}
+
+static int lj_init_video_filter(LJRenderState *state, const AVFrame *frame)
+{
+	if (state->filter_graph) {
+		avfilter_graph_free(&state->filter_graph);
+		state->buffersrc_ctx = NULL;
+		state->buffersink_ctx = NULL;
+	}
+
+	AVFilterGraph *graph = avfilter_graph_alloc();
+	if (!graph)
+		return AVERROR(ENOMEM);
+
+	const AVFilter *buffersrc = avfilter_get_by_name("buffer");
+	const AVFilter *hwupload = avfilter_get_by_name("hwupload");
+	const AVFilter *scale_vaapi = avfilter_get_by_name("scale_vaapi");
+	const AVFilter *buffersink = avfilter_get_by_name("buffersink");
+	if (!buffersrc || !hwupload || !scale_vaapi || !buffersink) {
+		avfilter_graph_free(&graph);
+		return AVERROR_FILTER_NOT_FOUND;
+	}
+
+	AVFilterContext *src_ctx = avfilter_graph_alloc_filter(graph, buffersrc, "in");
+	if (!src_ctx) {
+		avfilter_graph_free(&graph);
+		return AVERROR(ENOMEM);
+	}
+
+	AVBufferSrcParameters *params = av_buffersrc_parameters_alloc();
+	if (!params) {
+		avfilter_graph_free(&graph);
+		return AVERROR(ENOMEM);
+	}
+	params->format = frame->format;
+	params->width = frame->width;
+	params->height = frame->height;
+	params->time_base = state->video_encoder->time_base;
+	params->sample_aspect_ratio = frame->sample_aspect_ratio.num > 0 && frame->sample_aspect_ratio.den > 0
+		? frame->sample_aspect_ratio : (AVRational){1, 1};
+	params->color_space = frame->colorspace;
+	params->color_range = frame->color_range;
+	if (frame->format == AV_PIX_FMT_VAAPI && frame->hw_frames_ctx)
+		params->hw_frames_ctx = frame->hw_frames_ctx;
+
+	int ret = av_buffersrc_parameters_set(src_ctx, params);
+	av_free(params);
+	if (ret < 0) {
+		avfilter_graph_free(&graph);
+		return ret;
+	}
+
+	ret = avfilter_init_str(src_ctx, NULL);
+	if (ret < 0) {
+		avfilter_graph_free(&graph);
+		return ret;
+	}
+
+	AVFilterContext *upload_ctx = NULL;
+	if (frame->format != AV_PIX_FMT_VAAPI) {
+		upload_ctx = avfilter_graph_alloc_filter(graph, hwupload, "upload");
+		if (!upload_ctx) {
+			avfilter_graph_free(&graph);
+			return AVERROR(ENOMEM);
+		}
+		upload_ctx->hw_device_ctx = av_buffer_ref(state->vaapi_device);
+		if (!upload_ctx->hw_device_ctx) {
+			avfilter_graph_free(&graph);
+			return AVERROR(ENOMEM);
+		}
+		ret = avfilter_init_str(upload_ctx, NULL);
+		if (ret < 0) {
+			avfilter_graph_free(&graph);
+			return ret;
+		}
+	}
+
+	AVFilterContext *scale_ctx = avfilter_graph_alloc_filter(graph, scale_vaapi, "scale");
+	if (!scale_ctx) {
+		avfilter_graph_free(&graph);
+		return AVERROR(ENOMEM);
+	}
+	scale_ctx->hw_device_ctx = av_buffer_ref(state->vaapi_device);
+	if (!scale_ctx->hw_device_ctx) {
+		avfilter_graph_free(&graph);
+		return AVERROR(ENOMEM);
+	}
+	char scale_args[128];
+	snprintf(scale_args, sizeof(scale_args), "w=%d:h=%d:format=nv12",
+		state->video_encoder->width, state->video_encoder->height);
+	ret = avfilter_init_str(scale_ctx, scale_args);
+	if (ret < 0) {
+		avfilter_graph_free(&graph);
+		return ret;
+	}
+
+	AVFilterContext *sink_ctx = NULL;
+	ret = avfilter_graph_create_filter(&sink_ctx, buffersink, "out",
+		"pixel_formats=vaapi", NULL, graph);
+	if (ret < 0) {
+		avfilter_graph_free(&graph);
+		return ret;
+	}
+
+	if (upload_ctx) {
+		ret = avfilter_link(src_ctx, 0, upload_ctx, 0);
+		if (ret >= 0)
+			ret = avfilter_link(upload_ctx, 0, scale_ctx, 0);
+	} else {
+		ret = avfilter_link(src_ctx, 0, scale_ctx, 0);
+	}
+	if (ret >= 0)
+		ret = avfilter_link(scale_ctx, 0, sink_ctx, 0);
+	if (ret < 0) {
+		avfilter_graph_free(&graph);
+		return ret;
+	}
+
+	ret = avfilter_graph_config(graph, NULL);
+	if (ret < 0) {
+		lj_fferror(state->error, sizeof(state->error), "configuring video filter graph", ret);
+		avfilter_graph_free(&graph);
+		return ret;
+	}
+
+	state->filter_graph = graph;
+	state->buffersrc_ctx = src_ctx;
+	state->buffersink_ctx = sink_ctx;
+	state->filter_in_format = frame->format;
+	state->filter_in_width = frame->width;
+	state->filter_in_height = frame->height;
+	state->filter_in_sw_format = AV_PIX_FMT_NONE;
+	if (frame->format == AV_PIX_FMT_VAAPI && frame->hw_frames_ctx) {
+		AVHWFramesContext *hwfc = (AVHWFramesContext *)frame->hw_frames_ctx->data;
+		state->filter_in_sw_format = hwfc->sw_format;
+	}
+
+	return 0;
+}
+
 static int lj_encode_video_frame(LJRenderState *state, AVFrame *decoded,
 	int64_t output_pts)
 {
 	int ret = lj_abort_if_cancelled(state->cancel, state->error, sizeof(state->error));
 	if (ret < 0)
 		return ret;
-	if (decoded->format == AV_PIX_FMT_VAAPI) {
+
+	if (!lj_frame_needs_scaling(state, decoded)) {
 		decoded->pts = output_pts;
 		ret = lj_send_and_drain_video(state, decoded);
-		if (ret >= 0) {
+		if (ret >= 0)
 			state->last_video_pts = output_pts;
-			return 0;
-		}
-		AVFrame *downloaded = av_frame_alloc();
-		if (!downloaded)
-			return AVERROR(ENOMEM);
-		int dl_ret = av_hwframe_transfer_data(downloaded, decoded, 0);
-		if (dl_ret < 0) {
-			av_frame_free(&downloaded);
-			return ret;
-		}
-		downloaded->pts = output_pts;
-		ret = lj_encode_video_frame(state, downloaded, output_pts);
-		av_frame_free(&downloaded);
 		return ret;
 	}
-	if (!state->scaler) {
-		state->scaler = sws_getContext(decoded->width, decoded->height,
-			(enum AVPixelFormat)decoded->format,
-			state->video_encoder->width,
-			state->video_encoder->height,
-			AV_PIX_FMT_NV12, SWS_BILINEAR, NULL, NULL, NULL);
-		if (!state->scaler)
-			return AVERROR(EINVAL);
-	}
-	if (!state->software_frame) {
-		state->software_frame = av_frame_alloc();
-		if (!state->software_frame)
-			return AVERROR(ENOMEM);
-		state->software_frame->format = AV_PIX_FMT_NV12;
-		state->software_frame->width = state->video_encoder->width;
-		state->software_frame->height = state->video_encoder->height;
-		ret = av_frame_get_buffer(state->software_frame, 32);
+
+	if (!lj_filter_matches(state, decoded)) {
+		ret = lj_init_video_filter(state, decoded);
 		if (ret < 0)
 			return ret;
 	}
-	if (!state->hardware_frame) {
-		state->hardware_frame = av_frame_alloc();
-		if (!state->hardware_frame)
+	if (!state->filtered_frame) {
+		state->filtered_frame = av_frame_alloc();
+		if (!state->filtered_frame)
 			return AVERROR(ENOMEM);
 	}
-	ret = sws_scale(state->scaler, (const uint8_t *const *)decoded->data,
-				decoded->linesize, 0, decoded->height, state->software_frame->data,
-				state->software_frame->linesize) > 0
-		? 0
-		: AVERROR(EINVAL);
-	if (ret >= 0) {
-		ret = av_hwframe_get_buffer(state->hw_frames, state->hardware_frame, 0);
-		if (ret < 0) {
-			lj_drain_video(state);
-			ret = av_hwframe_get_buffer(state->hw_frames, state->hardware_frame, 0);
-		}
+
+	decoded->pts = output_pts;
+	ret = av_buffersrc_add_frame_flags(state->buffersrc_ctx, decoded,
+		AV_BUFFERSRC_FLAG_KEEP_REF);
+	if (ret < 0)
+		return ret;
+
+	for (;;) {
+		ret = av_buffersink_get_frame(state->buffersink_ctx, state->filtered_frame);
+		if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+			return 0;
+		if (ret < 0)
+			return ret;
+		state->filtered_frame->pts = output_pts;
+		ret = lj_send_and_drain_video(state, state->filtered_frame);
+		av_frame_unref(state->filtered_frame);
+		if (ret < 0)
+			return ret;
+		state->last_video_pts = output_pts;
 	}
-	if (ret >= 0)
-		ret = av_hwframe_transfer_data(state->hardware_frame, state->software_frame, 0);
-	if (ret >= 0) {
-		state->hardware_frame->pts = output_pts;
-		ret = lj_send_and_drain_video(state, state->hardware_frame);
-	}
-	av_frame_unref(state->hardware_frame);
-	return ret;
 }
 
 static int lj_process_audio_samples(LJRenderState *state, LJAudioDecoder *audio_decoder,
@@ -841,6 +993,38 @@ int lj_render_file(const char *input, const char *output,
 			goto done;
 	}
 
+	// Flush video filter graph if active
+	if (state.buffersrc_ctx) {
+		ret = av_buffersrc_add_frame_flags(state.buffersrc_ctx, NULL, 0);
+		if (ret < 0 && ret != AVERROR_EOF)
+			goto done;
+		if (!state.filtered_frame) {
+			state.filtered_frame = av_frame_alloc();
+			if (!state.filtered_frame) {
+				ret = AVERROR(ENOMEM);
+				goto done;
+			}
+		}
+		for (;;) {
+			ret = av_buffersink_get_frame(state.buffersink_ctx, state.filtered_frame);
+			if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+				ret = 0;
+				break;
+			}
+			if (ret < 0)
+				goto done;
+			if (state.last_video_pts != AV_NOPTS_VALUE &&
+			    state.filtered_frame->pts <= state.last_video_pts)
+				state.filtered_frame->pts = state.last_video_pts + 1;
+			ret = lj_send_and_drain_video(&state, state.filtered_frame);
+			if (ret >= 0)
+				state.last_video_pts = state.filtered_frame->pts;
+			av_frame_unref(state.filtered_frame);
+			if (ret < 0)
+				goto done;
+		}
+	}
+
 	// Flush video encoder
 	ret = avcodec_send_frame(state.video_encoder, NULL);
 	if (ret < 0 && ret != AVERROR_EOF)
@@ -883,11 +1067,10 @@ done:
 		}
 		avformat_free_context(state.output);
 	}
-	av_frame_free(&state.software_frame);
-	av_frame_free(&state.hardware_frame);
+	av_frame_free(&state.filtered_frame);
+	avfilter_graph_free(&state.filter_graph);
 	av_packet_free(&state.video_packet);
 	av_packet_free(&state.audio_packet);
-	sws_freeContext(state.scaler);
 	swr_free(&state.audio_resampler);
 	avcodec_free_context(&state.video_encoder);
 	avcodec_free_context(&state.audio_encoder);

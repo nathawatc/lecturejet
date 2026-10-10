@@ -155,3 +155,18 @@ if [[ "$hevc_supported" -eq 1 ]]; then
 
 	echo "HEVC VAAPI integration passed: hev1 and hvc1 tags"
 fi
+
+# VAAPI hardware scale / format conversion test (10-bit input to 8-bit NV12)
+hdr10_input="$work_dir/synthetic-10bit.mp4"
+ffmpeg -hide_banner -loglevel error -y \
+	-f lavfi -i 'testsrc2=size=320x240:rate=30:duration=4' \
+	-f lavfi -i 'sine=frequency=440:sample_rate=48000:duration=4' \
+	-t 4 -c:v libx264 -pix_fmt yuv420p10le -c:a aac -shortest "$hdr10_input"
+hdr10_output="$work_dir/output-10bit.mp4"
+"$binary" "$hdr10_input" "$hdr10_output" --non-interactive --vaapi-device "$device" \
+	--video-codec h264 --mono --threads 2
+verify_media "$hdr10_output"
+assert_av_sync "$hdr10_output"
+assert_monotonic_timestamps "$hdr10_output"
+echo "VAAPI scaling integration passed: 10-bit conversion"
+
