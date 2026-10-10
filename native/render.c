@@ -262,13 +262,19 @@ static int lj_open_video_encoder(LJRenderState *state, const LJRenderOptions *op
 	state->video_encoder = avcodec_alloc_context3(codec);
 	if (!state->video_encoder)
 		return AVERROR(ENOMEM);
+	AVRational effective_fps = fps.num > 0 && fps.den > 0 ? fps : (AVRational){30, 1};
+	int fps_int = (int)((effective_fps.num + effective_fps.den / 2) / effective_fps.den);
+	if (fps_int <= 0)
+		fps_int = 30;
 	state->video_encoder->width = width;
 	state->video_encoder->height = height;
 	state->video_encoder->time_base = (AVRational){1, 90000};
-	state->video_encoder->framerate = fps.num > 0 && fps.den > 0 ? fps : (AVRational){30, 1};
+	state->video_encoder->framerate = effective_fps;
 	state->video_encoder->pix_fmt = AV_PIX_FMT_VAAPI;
-	state->video_encoder->gop_size = 60;
+	state->video_encoder->gop_size = fps_int * 4;
+	state->video_encoder->refs = 2;
 	state->video_encoder->max_b_frames = 0;
+	av_opt_set_int(state->video_encoder, "async_depth", 4, AV_OPT_SEARCH_CHILDREN);
 	state->video_encoder->hw_device_ctx = av_buffer_ref(state->vaapi_device);
 	if (!state->video_encoder->hw_device_ctx)
 		return AVERROR(ENOMEM);
