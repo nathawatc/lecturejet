@@ -1,7 +1,13 @@
 #include "common.h"
 
+#include <libavutil/log.h>
 #include <stdarg.h>
 #include <stdio.h>
+
+void lj_set_log_level(int verbose)
+{
+	av_log_set_level(verbose ? AV_LOG_INFO : AV_LOG_ERROR);
+}
 
 void lj_error(char *error, size_t error_size, const char *format, ...)
 {

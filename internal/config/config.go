@@ -30,7 +30,6 @@ type AudioConfig struct {
 type NoiseConfig struct {
 	Enabled  bool
 	Strength int
-	Model    string
 }
 
 type SilenceConfig struct {
@@ -44,6 +43,7 @@ type Config struct {
 	Input        string
 	Output       string
 	Force        bool
+	Verbose      bool
 	Threads      int
 	VideoCodec   VideoCodec
 	HEVCCodecTag HEVCCodecTag

@@ -6,10 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"codeberg.org/nathawat/lecturejet/internal/analyze"
+	"codeberg.org/nathawat/lecturejet/internal/audio"
 	"codeberg.org/nathawat/lecturejet/internal/config"
 	"codeberg.org/nathawat/lecturejet/internal/media"
 	"codeberg.org/nathawat/lecturejet/internal/timeline"
@@ -36,8 +36,8 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 	if cfg.Threads <= 0 {
 		cfg.Threads = analyze.WorkerCount(0)
 	}
-	phase, totalPhases := getWorkflow(ctx, 1, 3)
-	reporter := NewProgressReporter(status, phase, totalPhases, "Analyzing audio silence...")
+	phase, totalPhases := getWorkflow(ctx, 1, 2)
+	reporter := NewProgressReporter(status, phase, totalPhases, "Analyzing Audio...")
 	if reporter != nil {
 		defer func() {
 			if err != nil {
@@ -47,8 +47,19 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 	}
 	analysisCtx, cancelAnalysis := context.WithCancel(ctx)
 	defer cancelAnalysis()
+	var modelHandle *audio.ModelHandle
+	modelPath := ""
+	if cfg.Noise.Enabled {
+		handle, err := audio.OpenEmbeddedModel()
+		if err != nil {
+			return Result{}, err
+		}
+		modelHandle = handle
+		defer modelHandle.Close()
+		modelPath = modelHandle.Path()
+	}
 	decoder, err := media.OpenAudio(analysisCtx, cfg.Input, 1, cfg.Noise.Enabled,
-		cfg.NoiseStrength(), cfg.Noise.Model)
+		cfg.NoiseStrength(), modelPath)
 	if err != nil {
 		return Result{}, err
 	}
@@ -159,16 +170,20 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	if result.VAAPIDevice == "" {
 		return fmt.Errorf("no usable VAAPI device selected")
 	}
-	_, totalPhases := getWorkflow(ctx, 2, 3)
+	_, totalPhases := getWorkflow(ctx, 2, 2)
 	renderPhase := 2
-	finalPhase := 3
 	if totalPhases <= 1 {
 		renderPhase = 1
-		finalPhase = 1
 	}
-	stageName := fmt.Sprintf("Rendering %s VAAPI...", strings.ToUpper(string(cfg.VideoCodec)))
-	reporter := NewProgressReporter(status, renderPhase, totalPhases, stageName)
+	reporter := NewProgressReporter(status, renderPhase, totalPhases, "Rendering Video...")
 	if reporter != nil {
+		cutEnds := make([]timeline.TimeNS, 0, len(result.Timeline.Segments()))
+		for _, seg := range result.Timeline.Segments() {
+			if seg.Action == timeline.Cut {
+				cutEnds = append(cutEnds, seg.End)
+			}
+		}
+		reporter.SetRenderMetrics(result.Cuts, cutEnds, time.Duration(result.Duration))
 		defer func() {
 			if err != nil {
 				reporter.Abort()
@@ -187,9 +202,20 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	if cfg.VideoCodec == config.VideoHEVC {
 		videoTag = string(cfg.HEVCCodecTag)
 	}
+	var modelHandle *audio.ModelHandle
+	modelPath := ""
+	if cfg.Noise.Enabled {
+		handle, err := audio.OpenEmbeddedModel()
+		if err != nil {
+			return err
+		}
+		modelHandle = handle
+		defer modelHandle.Close()
+		modelPath = modelHandle.Path()
+	}
 	err = media.Render(ctx, cfg.Input, temporaryPath, result.Timeline, media.RenderOptions{
 		VideoCodec: codec, VideoTag: videoTag, VAAPIDevice: result.VAAPIDevice, OutputMono: cfg.Audio.Mono,
-		RNNoiseEnabled: cfg.Noise.Enabled, RNNoiseStrength: cfg.NoiseStrength(), RNNoiseModel: cfg.Noise.Model,
+		RNNoiseEnabled: cfg.Noise.Enabled, RNNoiseStrength: cfg.NoiseStrength(), RNNoiseModel: modelPath,
 		Threads: cfg.Threads,
 	}, func(permille int) {
 		if reporter != nil {
@@ -203,9 +229,6 @@ func Render(ctx context.Context, cfg config.Config, result Result, status io.Wri
 	}
 	if err := ctx.Err(); err != nil {
 		return err
-	}
-	if reporter != nil && totalPhases >= 3 {
-		reporter.SetStage(finalPhase, "Finalizing container...")
 	}
 	if err := Publish(temporaryPath, cfg.Output, cfg.Force); err != nil {
 		return err

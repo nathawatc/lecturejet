@@ -24,25 +24,28 @@ func TestInteractiveChoicesResolveExpectedConfig(t *testing.T) {
 
 func TestInteractiveRNNoiseStrengthChoice(t *testing.T) {
 	cfg := config.Default()
-	resolved, err := Configure(strings.NewReader("1\n1\ny\n4\n0\nmodel.rnnn\n\n"), &strings.Builder{}, cfg,
+	resolved, err := Configure(strings.NewReader("1\n1\ny\n4\n0\n"), &strings.Builder{}, cfg,
 		[]VAAPIChoice{{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !resolved.Noise.Enabled || resolved.Noise.Strength != 0 || resolved.Noise.Model != "model.rnnn" || !resolved.Audio.Mono {
+	if !resolved.Noise.Enabled || resolved.Noise.Strength != 0 || !resolved.Audio.Mono {
 		t.Fatalf("unexpected RNNoise result: %+v", resolved)
 	}
 }
 
 func TestInteractiveRNNoiseDefaultStrength(t *testing.T) {
 	cfg := config.Default()
-	resolved, err := Configure(strings.NewReader("1\n1\ny\n\nmodel.rnnn\n\n"), &strings.Builder{}, cfg,
+	resolved, err := Configure(strings.NewReader("\n\n\n\n"), &strings.Builder{}, cfg,
 		[]VAAPIChoice{{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !resolved.Noise.Enabled || resolved.Noise.Strength != 100 || resolved.Noise.Model != "model.rnnn" {
+	if !resolved.Noise.Enabled || resolved.Noise.Strength != 100 || !resolved.Audio.Mono {
 		t.Fatalf("unexpected RNNoise default: %+v", resolved.Noise)
+	}
+	if resolved.VideoCodec != config.VideoHEVC || resolved.HEVCCodecTag != config.HEVCCodecTagHVC1 {
+		t.Fatalf("unexpected codec/tag defaults: codec=%v tag=%v", resolved.VideoCodec, resolved.HEVCCodecTag)
 	}
 }
 
@@ -51,11 +54,11 @@ func TestInteractiveRNNoiseExplicitStrengthChoices(t *testing.T) {
 		input    string
 		strength int
 	}{
-		{"1\n1\ny\n1\nmodel.rnnn\n\n", 100},
-		{"1\n1\ny\n2\nmodel.rnnn\n\n", 90},
-		{"1\n1\ny\n3\nmodel.rnnn\n\n", 80},
-		{"1\n1\ny\n4\n\nmodel.rnnn\n\n", 100},
-		{"1\n1\ny\n4\n75\nmodel.rnnn\n\n", 75},
+		{"1\n1\ny\n1\n", 100},
+		{"1\n1\ny\n2\n", 90},
+		{"1\n1\ny\n3\n", 80},
+		{"1\n1\ny\n4\n\n", 100},
+		{"1\n1\ny\n4\n75\n", 75},
 	}
 	for _, tc := range cases {
 		cfg := config.Default()
@@ -72,7 +75,7 @@ func TestInteractiveRNNoiseExplicitStrengthChoices(t *testing.T) {
 
 func TestInteractiveHEVCCodecTagChoice(t *testing.T) {
 	cfg := config.Default()
-	resolved, err := Configure(strings.NewReader("1\n2\nn\nn\n"), &strings.Builder{}, cfg,
+	resolved, err := Configure(strings.NewReader("1\n1\nn\nn\n"), &strings.Builder{}, cfg,
 		[]VAAPIChoice{{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"}})
 	if err != nil {
 		t.Fatal(err)
@@ -80,21 +83,30 @@ func TestInteractiveHEVCCodecTagChoice(t *testing.T) {
 	if resolved.HEVCCodecTag != config.HEVCCodecTagHVC1 {
 		t.Fatalf("unexpected HEVC codec tag: %q", resolved.HEVCCodecTag)
 	}
+
+	resolvedHev1, err := Configure(strings.NewReader("1\n2\nn\nn\n"), &strings.Builder{}, cfg,
+		[]VAAPIChoice{{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolvedHev1.HEVCCodecTag != config.HEVCCodecTagHEV1 {
+		t.Fatalf("unexpected HEVC codec tag: %q", resolvedHev1.HEVCCodecTag)
+	}
 }
 
-func TestInteractiveRNNoiseWithStereoYieldsInvalidConfig(t *testing.T) {
+func TestInteractiveRNNoiseEnforcesMonoWithoutPrompt(t *testing.T) {
 	cfg := config.Default()
 	cfg.Input = "in.mp4"
 	cfg.Output = "out.mp4"
-	resolved, err := Configure(strings.NewReader("1\n1\ny\n\nmodel.rnnn\nn\n"), &strings.Builder{}, cfg,
+	resolved, err := Configure(strings.NewReader("1\n1\ny\n1\n"), &strings.Builder{}, cfg,
 		[]VAAPIChoice{{Codec: config.VideoHEVC, Device: "/dev/dri/renderD128"}})
 	if err != nil {
 		t.Fatalf("unexpected wizard error: %v", err)
 	}
-	if !resolved.Noise.Enabled || resolved.Audio.Mono {
-		t.Fatalf("expected RNNoise enabled and stereo output, got %+v", resolved)
+	if !resolved.Noise.Enabled || !resolved.Audio.Mono {
+		t.Fatalf("expected RNNoise enabled and mono output, got %+v", resolved)
 	}
-	if err := resolved.Validate(); err == nil {
-		t.Fatal("expected invalid config for RNNoise + stereo, got valid config")
+	if err := resolved.Validate(); err != nil {
+		t.Fatalf("expected valid config, got error: %v", err)
 	}
 }

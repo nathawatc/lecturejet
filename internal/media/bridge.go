@@ -64,6 +64,18 @@ func (handle *cancelHandle) close() {
 	handle.ptr = nil
 }
 
+func init() {
+	C.lj_set_log_level(0)
+}
+
+func SetVerbose(verbose bool) {
+	v := C.int(0)
+	if verbose {
+		v = 1
+	}
+	C.lj_set_log_level(v)
+}
+
 func Probe(path string) (ProbeInfo, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))

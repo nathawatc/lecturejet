@@ -187,7 +187,6 @@ func TestParseRNNoiseStereoReachesValidationAndIsRejected(t *testing.T) {
 	cfg, _, _, err := parseRenderArgs([]string{
 		"input.mp4", "output.mp4",
 		"--rnnoise",
-		"--rnnoise-model", "model.rnnn",
 		"--stereo",
 		"--non-interactive",
 	})
@@ -209,7 +208,6 @@ func TestParseRNNoiseDefaultStrength100(t *testing.T) {
 	cfgRender, _, _, err := parseRenderArgs([]string{
 		"in.mp4", "out.mp4",
 		"--rnnoise",
-		"--rnnoise-model", "model.rnnn",
 		"--non-interactive",
 	})
 	if err != nil {
@@ -222,7 +220,6 @@ func TestParseRNNoiseDefaultStrength100(t *testing.T) {
 	cfgAnalyze, err := parseAnalyzeArgs([]string{
 		"in.mp4",
 		"--rnnoise",
-		"--rnnoise-model", "model.rnnn",
 	})
 	if err != nil {
 		t.Fatalf("unexpected analyze parse error: %v", err)
@@ -257,7 +254,6 @@ func TestTopLevelHelp(t *testing.T) {
 				"-hevc-tag",
 				"-vaapi-device",
 				"-rnnoise",
-				"-rnnoise-model",
 				"-rnnoise-strength",
 				"-mono",
 				"-stereo",
@@ -295,7 +291,6 @@ func TestAnalyzeHelp(t *testing.T) {
 			for _, expectedFlag := range []string{
 				"-threads",
 				"-rnnoise",
-				"-rnnoise-model",
 				"-rnnoise-strength",
 				"-threshold",
 				"-min-silence",

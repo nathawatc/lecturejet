@@ -23,6 +23,7 @@ void lj_fferror(char *error, size_t error_size, const char *operation, int code)
 /* Cancellation wins, then a prepared detail message, then the FFmpeg code. */
 void lj_report_failure(char *error, size_t error_size, const char *detail,
 	const LJCancelToken *cancel, const char *operation, int code);
+void lj_set_log_level(int verbose);
 
 /* cancel.c */
 int lj_cancel_requested(const LJCancelToken *token);

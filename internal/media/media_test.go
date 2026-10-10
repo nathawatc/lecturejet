@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"codeberg.org/nathawat/lecturejet/internal/audio"
 	"codeberg.org/nathawat/lecturejet/internal/config"
 	"codeberg.org/nathawat/lecturejet/internal/timeline"
 )
@@ -75,9 +76,17 @@ func TestFixtureProbeAndFiniteAudio(t *testing.T) {
 
 func TestFixtureRNNoiseFiniteAudio(t *testing.T) {
 	path := os.Getenv("LECTUREJET_TEST_MEDIA")
+	if path == "" {
+		t.Skip("set LECTUREJET_TEST_MEDIA to run RNNoise fixture test")
+	}
 	model := os.Getenv("LECTUREJET_TEST_RNNOISE_MODEL")
-	if path == "" || model == "" {
-		t.Skip("set LECTUREJET_TEST_MEDIA and LECTUREJET_TEST_RNNOISE_MODEL to run RNNoise fixture test")
+	if model == "" {
+		handle, err := audio.OpenEmbeddedModel()
+		if err != nil {
+			t.Fatalf("OpenEmbeddedModel failed: %v", err)
+		}
+		defer handle.Close()
+		model = handle.Path()
 	}
 	path, err := filepath.Abs(path)
 	if err != nil {

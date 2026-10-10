@@ -63,13 +63,13 @@ func printVersion(out io.Writer) {
 
 type renderFlagValues struct {
 	force          *bool
+	verbose        *bool
 	threads        *string
 	codec          *string
 	hevcTag        *string
 	device         *string
 	rnnoise        *bool
 	strength       *int
-	model          *string
 	mono           *bool
 	stereo         *bool
 	threshold      *float64
@@ -83,13 +83,13 @@ func newRenderFlagSet(cfg config.Config, out io.Writer) (*flag.FlagSet, *renderF
 	flags.SetOutput(out)
 	rf := &renderFlagValues{
 		force:          flags.Bool("force", false, "allow replacing an existing output file"),
+		verbose:        flags.Bool("verbose", false, "verbose logging"),
 		threads:        flags.String("threads", "auto", "analysis workers or auto"),
 		codec:          flags.String("video-codec", string(cfg.VideoCodec), "hevc or h264"),
 		hevcTag:        flags.String("hevc-tag", string(cfg.HEVCCodecTag), "HEVC codec tag: hev1 or hvc1"),
 		device:         flags.String("vaapi-device", "", "VAAPI render device"),
 		rnnoise:        flags.Bool("rnnoise", false, "enable RNNoise"),
 		strength:       flags.Int("rnnoise-strength", cfg.Noise.Strength, "RNNoise strength 0-100"),
-		model:          flags.String("rnnoise-model", "", "RNNoise .rnnn model"),
 		mono:           flags.Bool("mono", false, "convert output audio to mono"),
 		stereo:         flags.Bool("stereo", false, "preserve stereo output"),
 		threshold:      flags.Float64("threshold", cfg.Silence.ThresholdDB, "silence threshold dBFS"),
@@ -97,14 +97,15 @@ func newRenderFlagSet(cfg config.Config, out io.Writer) (*flag.FlagSet, *renderF
 		margin:         flags.Int("margin", cfg.Silence.MarginMS, "speech protection margin milliseconds"),
 		nonInteractive: flags.Bool("non-interactive", false, "use defaults without wizard"),
 	}
+	flags.BoolVar(rf.verbose, "v", false, "verbose logging")
 	return flags, rf
 }
 
 type analyzeFlagValues struct {
 	threads    *string
+	verbose    *bool
 	rnnoise    *bool
 	strength   *int
-	model      *string
 	threshold  *float64
 	minSilence *int
 	margin     *int
@@ -115,13 +116,14 @@ func newAnalyzeFlagSet(cfg config.Config, out io.Writer) (*flag.FlagSet, *analyz
 	flags.SetOutput(out)
 	af := &analyzeFlagValues{
 		threads:    flags.String("threads", "auto", "analysis workers or auto"),
+		verbose:    flags.Bool("verbose", false, "enable verbose logging"),
 		rnnoise:    flags.Bool("rnnoise", false, "enable RNNoise"),
 		strength:   flags.Int("rnnoise-strength", cfg.Noise.Strength, "RNNoise strength 0-100"),
-		model:      flags.String("rnnoise-model", "", "RNNoise .rnnn model"),
 		threshold:  flags.Float64("threshold", cfg.Silence.ThresholdDB, "silence threshold dBFS"),
 		minSilence: flags.Int("min-silence", cfg.Silence.MinSilenceMS, "minimum silence milliseconds"),
 		margin:     flags.Int("margin", cfg.Silence.MarginMS, "speech protection margin milliseconds"),
 	}
+	flags.BoolVar(af.verbose, "v", false, "enable verbose logging")
 	return flags, af
 }
 
@@ -181,12 +183,12 @@ func parseRenderArgs(args []string) (config.Config, bool, bool, error) {
 		return config.Config{}, false, false, fmt.Errorf("--mono and --stereo conflict")
 	}
 	cfg.Force = *rf.force
+	cfg.Verbose = *rf.verbose
 	cfg.VideoCodec = config.VideoCodec(strings.ToLower(*rf.codec))
 	cfg.HEVCCodecTag = config.HEVCCodecTag(strings.ToLower(*rf.hevcTag))
 	cfg.VAAPIDevice = *rf.device
 	cfg.Noise.Enabled = *rf.rnnoise
 	cfg.Noise.Strength = *rf.strength
-	cfg.Noise.Model = *rf.model
 	if *rf.mono {
 		cfg.Audio.Mono = true
 	}
@@ -232,7 +234,8 @@ func parseAnalyzeArgs(args []string) (config.Config, error) {
 	if flags.NArg() != 0 {
 		return config.Config{}, fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
 	}
-	cfg.Noise.Enabled, cfg.Noise.Strength, cfg.Noise.Model = *af.rnnoise, *af.strength, *af.model
+	cfg.Verbose = *af.verbose
+	cfg.Noise.Enabled, cfg.Noise.Strength = *af.rnnoise, *af.strength
 	cfg.Silence.ThresholdDB = *af.threshold
 	cfg.Silence.MinSilenceMS = *af.minSilence
 	cfg.Silence.MarginMS = *af.margin

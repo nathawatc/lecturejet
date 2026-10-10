@@ -60,7 +60,6 @@ For more options, see `lecturejet -h`.
 Integrates FFmpeg's `arnndn` filter for noise reduction.
 
 - `--rnnoise`: Enable noise reduction (requires `--mono`).
-- `--rnnoise-model <path>`: Path to a compatible `.rnnn` model file.
 - `--rnnoise-strength <0-100>`: Suppression strength (default: `80`).
 
 ## Troubleshooting

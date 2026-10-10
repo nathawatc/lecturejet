@@ -18,7 +18,13 @@ import (
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 		if errors.Is(err, context.Canceled) {
+			if isTerminal(os.Stderr) {
+				fmt.Fprint(os.Stderr, "\r\033[2K\033[?25h")
+			}
 			os.Exit(130)
+		}
+		if isTerminal(os.Stderr) {
+			fmt.Fprint(os.Stderr, "\033[?25h")
 		}
 		fmt.Fprintf(os.Stderr, "lecturejet: %v\n", err)
 		os.Exit(1)
@@ -51,6 +57,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	media.SetVerbose(cfg.Verbose)
 	if err := app.Preflight(cfg); err != nil {
 		return err
 	}
@@ -85,7 +92,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	ctx = app.WithWorkflow(ctx, 1, 3)
+	ctx = app.WithWorkflow(ctx, 1, 2)
 	result, err := app.Analyze(ctx, cfg, stderr)
 	if err != nil {
 		return err
@@ -116,6 +123,7 @@ func runAnalyze(args []string, stdout, stderr io.Writer) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	media.SetVerbose(cfg.Verbose)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx = app.WithWorkflow(ctx, 1, 1)
@@ -136,9 +144,20 @@ func isTerminal(file *os.File) bool {
 }
 
 func printResult(out io.Writer, result app.Result) {
-	fmt.Fprintf(out, "Duration       %s\n", result.Duration)
-	fmt.Fprintf(out, "Kept           %s\n", result.Kept)
-	fmt.Fprintf(out, "Removed        %s\n", result.Removed)
-	fmt.Fprintf(out, "Cuts           %d\n", result.Cuts)
-	fmt.Fprintf(out, "Reduction      %.2f%%\n", result.Reduction)
+	dur := float64(result.Duration)
+	var keptPct, remPct float64
+	if dur > 0 {
+		keptPct = float64(result.Kept) * 100.0 / dur
+		remPct = float64(result.Removed) * 100.0 / dur
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "┌─ Silence Cut Analysis ──────────────────────────────────┐")
+	line1 := fmt.Sprintf("│  Original:  %s", result.Duration)
+	fmt.Fprintf(out, "%-58s│\n", line1)
+	line2 := fmt.Sprintf("│  Kept:      %s (%.2f%%)", result.Kept, keptPct)
+	fmt.Fprintf(out, "%-58s│\n", line2)
+	line3 := fmt.Sprintf("│  Removed:   %s (%.2f%%)", result.Removed, remPct)
+	fmt.Fprintf(out, "%-58s│\n", line3)
+	fmt.Fprintln(out, "└─────────────────────────────────────────────────────────┘")
+	fmt.Fprintln(out)
 }

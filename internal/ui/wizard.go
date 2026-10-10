@@ -13,11 +13,11 @@ import (
 func Configure(in io.Reader, out io.Writer, cfg config.Config, choices []VAAPIChoice) (config.Config, error) {
 	reader := bufio.NewReader(in)
 	if len(choices) > 0 {
-		fmt.Fprintln(out, "GPU video codec:")
+		fmt.Fprintln(out, "Video codec:")
 		for i, choice := range choices {
-			name := "H.264 / AVC"
+			name := "H.264(AVC)"
 			if choice.Codec == config.VideoHEVC {
-				name = "HEVC / H.265"
+				name = "H.265(HEVC)"
 			}
 			fmt.Fprintf(out, "  [%d] %s\n", i+1, name)
 		}
@@ -28,14 +28,14 @@ func Configure(in io.Reader, out io.Writer, cfg config.Config, choices []VAAPICh
 		cfg.VideoCodec = choices[value-1].Codec
 		cfg.VAAPIDevice = choices[value-1].Device
 		if cfg.VideoCodec == config.VideoHEVC {
-			fmt.Fprintln(out, "HEVC codec tag:")
-			fmt.Fprintln(out, "  [1] hev1  default")
-			fmt.Fprintln(out, "  [2] hvc1  Apple-compatible")
+			fmt.Fprintln(out, "Codec tag:")
+			fmt.Fprintln(out, "  [1] HVC1 (Apple-compatible)")
+			fmt.Fprintln(out, "  [2] HEV1")
 			tagChoice, err := readChoice(reader, out, "Choice", 1, 2)
 			if err != nil {
 				return config.Config{}, err
 			}
-			if tagChoice == 2 {
+			if tagChoice == 1 {
 				cfg.HEVCCodecTag = config.HEVCCodecTagHVC1
 			} else {
 				cfg.HEVCCodecTag = config.HEVCCodecTagHEV1
@@ -45,14 +45,14 @@ func Configure(in io.Reader, out io.Writer, cfg config.Config, choices []VAAPICh
 		fmt.Fprintln(out, "No usable VAAPI encoder found for selected input.")
 	}
 
-	choice, err := readLine(reader, out, "Use RNNoise noise reduction? [y/N] ")
+	choice, err := readLine(reader, out, "Use RNNoise noise reduction? [Y/n] ")
 	if err != nil {
 		return config.Config{}, err
 	}
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(choice)), "y") {
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(choice)), "n") {
 		cfg.Noise.Enabled = true
 		fmt.Fprintln(out, "Noise reduction strength:")
-		fmt.Fprintln(out, "  [1] Maximum 100% (default)")
+		fmt.Fprintln(out, "  [1] Maximum 100%")
 		fmt.Fprintln(out, "  [2] Strong  90%")
 		fmt.Fprintln(out, "  [3] Strong  80%")
 		fmt.Fprintln(out, "  [4] Custom")
@@ -74,24 +74,16 @@ func Configure(in io.Reader, out io.Writer, cfg config.Config, choices []VAAPICh
 			}
 			cfg.Noise.Strength = value
 		}
-		model, err := readLine(reader, out, "RNNoise model path: ")
+		cfg.Audio.Mono = true
+	} else {
+		cfg.Noise.Enabled = false
+		mono, err := readLine(reader, out, "Convert output audio to mono? [Y/n] ")
 		if err != nil {
 			return config.Config{}, err
 		}
-		cfg.Noise.Model = strings.TrimSpace(model)
-	} else {
-		cfg.Noise.Enabled = false
+		cfg.Audio.Mono = !strings.HasPrefix(strings.ToLower(strings.TrimSpace(mono)), "n")
 	}
 
-	prompt := "Convert output audio to mono? [Y/n] "
-	if cfg.Noise.Enabled {
-		prompt = "Convert output audio to mono? (RNNoise requires mono) [Y/n] "
-	}
-	mono, err := readLine(reader, out, prompt)
-	if err != nil {
-		return config.Config{}, err
-	}
-	cfg.Audio.Mono = !strings.HasPrefix(strings.ToLower(strings.TrimSpace(mono)), "n")
 	return cfg, nil
 }
 

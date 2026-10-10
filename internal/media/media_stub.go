@@ -23,6 +23,8 @@ func Probe(path string) (ProbeInfo, error) {
 	return ProbeInfo{}, errUnsupported
 }
 
+func SetVerbose(verbose bool) {}
+
 func ProbeVAAPI(device, codec string, width, height int) error {
 	return errUnsupported
 }

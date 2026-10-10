@@ -49,6 +49,7 @@ void lj_cancel_token_destroy(LJCancelToken **token);
 int lj_probe_file(const char *path, LJProbeInfo *info, char *error, size_t error_size);
 int lj_probe_vaapi(const char *device, const char *codec, int width, int height,
 	char *error, size_t error_size);
+void lj_set_log_level(int verbose);
 
 LJAudioDecoder *lj_audio_open(const char *path, int output_channels,
 	LJCancelToken *cancel, int rnnoise_enabled, double rnnoise_strength,
