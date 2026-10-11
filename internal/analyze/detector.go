@@ -13,7 +13,6 @@ type WindowMetric struct {
 	Samples     int
 	RMS         float32
 	Peak        float32
-	ZCR         int
 }
 
 type Detector struct {
@@ -107,10 +106,6 @@ func RMS(samples []float32) float32 {
 	return float32(math.Sqrt(sum / float64(len(samples))))
 }
 
-func ZeroCrossingRate(samples []float32) int {
-	return zeroCrossingRate(samples)
-}
-
 func AnalyzeWindow(samples []float32) WindowMetric {
 	n := len(samples)
 	if n == 0 {
@@ -123,8 +118,7 @@ func AnalyzeWindow(samples []float32) WindowMetric {
 		return WindowMetric{Samples: n, RMS: 1, Peak: 1}
 	}
 	rms := float32(math.Sqrt(sum / float64(n)))
-	zcr := zeroCrossingRate(samples)
-	return WindowMetric{Samples: n, RMS: rms, Peak: peak, ZCR: zcr}
+	return WindowMetric{Samples: n, RMS: rms, Peak: peak}
 }
 
 func IsFinite(value float32) bool {

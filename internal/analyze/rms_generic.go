@@ -1,7 +1,5 @@
 package analyze
 
-import "math"
-
 func sumSquaresGeneric(samples []float32) float64 {
 	n := len(samples)
 	if n == 0 {
@@ -33,46 +31,6 @@ func sumSquaresGeneric(samples []float32) float64 {
 		sum += x * x
 	}
 	return sum
-}
-
-func zcrGeneric(samples []float32) int {
-	n := len(samples)
-	if n < 2 {
-		return 0
-	}
-	_ = samples[n-1]
-
-	count := 0
-	i := 0
-	for ; i+8 < n; i += 8 {
-		b0 := math.Float32bits(samples[i])
-		b1 := math.Float32bits(samples[i+1])
-		b2 := math.Float32bits(samples[i+2])
-		b3 := math.Float32bits(samples[i+3])
-		b4 := math.Float32bits(samples[i+4])
-		b5 := math.Float32bits(samples[i+5])
-		b6 := math.Float32bits(samples[i+6])
-		b7 := math.Float32bits(samples[i+7])
-		b8 := math.Float32bits(samples[i+8])
-
-		c0 := (b0 ^ b1) >> 31
-		c1 := (b1 ^ b2) >> 31
-		c2 := (b2 ^ b3) >> 31
-		c3 := (b3 ^ b4) >> 31
-		c4 := (b4 ^ b5) >> 31
-		c5 := (b5 ^ b6) >> 31
-		c6 := (b6 ^ b7) >> 31
-		c7 := (b7 ^ b8) >> 31
-
-		count += int(c0 + c1 + c2 + c3 + c4 + c5 + c6 + c7)
-	}
-
-	for ; i < n-1; i++ {
-		b0 := math.Float32bits(samples[i])
-		b1 := math.Float32bits(samples[i+1])
-		count += int((b0 ^ b1) >> 31)
-	}
-	return count
 }
 
 func peakAbsGeneric(samples []float32) float32 {

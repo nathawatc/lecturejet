@@ -327,41 +327,6 @@ func TestPeakAbsPrecision(t *testing.T) {
 	}
 }
 
-func TestZeroCrossingRateCorrectness(t *testing.T) {
-	if ZeroCrossingRate(nil) != 0 || ZeroCrossingRate([]float32{0.5}) != 0 {
-		t.Fatal("empty or single-element slice should have 0 zero crossings")
-	}
-
-	for n := 2; n <= 100; n++ {
-		samples := make([]float32, n)
-		for i := range samples {
-			if (i/2)%2 == 0 {
-				samples[i] = 0.5
-			} else {
-				samples[i] = -0.5
-			}
-		}
-
-		expected := 0
-		for i := 0; i < n-1; i++ {
-			a, b := samples[i], samples[i+1]
-			if (a > 0 && b < 0) || (a < 0 && b > 0) {
-				expected++
-			}
-		}
-
-		gotGeneric := zcrGeneric(samples)
-		if gotGeneric != expected {
-			t.Fatalf("len %d: generic ZCR=%d, want %d", n, gotGeneric, expected)
-		}
-
-		got := ZeroCrossingRate(samples)
-		if got != expected {
-			t.Fatalf("len %d: ZeroCrossingRate=%d, want %d", n, got, expected)
-		}
-	}
-}
-
 func TestZeroAllocations(t *testing.T) {
 	samples := repeatedSamples(480, 0.08)
 	allocs := testing.AllocsPerRun(1000, func() {
@@ -376,12 +341,5 @@ func TestZeroAllocations(t *testing.T) {
 	})
 	if allocsRMS != 0 {
 		t.Fatalf("RMS allocs=%v, want 0", allocsRMS)
-	}
-
-	allocsZCR := testing.AllocsPerRun(1000, func() {
-		_ = ZeroCrossingRate(samples)
-	})
-	if allocsZCR != 0 {
-		t.Fatalf("ZeroCrossingRate allocs=%v, want 0", allocsZCR)
 	}
 }

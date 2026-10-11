@@ -58,22 +58,6 @@ func BenchmarkRMS_1Hour(b *testing.B) {
 	}
 }
 
-func BenchmarkZCR_Window(b *testing.B) {
-	samples := make([]float32, 480)
-	for i := range samples {
-		if i%2 == 0 {
-			samples[i] = 0.08
-		} else {
-			samples[i] = -0.08
-		}
-	}
-	b.SetBytes(int64(len(samples) * 4))
-	b.ResetTimer()
-	for b.Loop() {
-		_ = ZeroCrossingRate(samples)
-	}
-}
-
 func BenchmarkOrderedWorkerMerge(b *testing.B) {
 	blocks := make([]PCMBlock, 64)
 	for i := range blocks {
