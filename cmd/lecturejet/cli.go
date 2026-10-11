@@ -62,47 +62,7 @@ func printVersion(out io.Writer) {
 	fmt.Fprintf(out, "lecturejet %s\n", currentVersion())
 }
 
-type renderFlagValues struct {
-	force          *bool
-	verbose        *bool
-	threads        *string
-	codec          *string
-	hevcTag        *string
-	device         *string
-	rnnoise        *bool
-	strength       *int
-	mono           *bool
-	stereo         *bool
-	threshold      *float64
-	minSilence     *int
-	margin         *int
-	nonInteractive *bool
-}
-
-func newRenderFlagSet(cfg config.Config, out io.Writer) (*flag.FlagSet, *renderFlagValues) {
-	flags := flag.NewFlagSet("lecturejet", flag.ContinueOnError)
-	flags.SetOutput(out)
-	rf := &renderFlagValues{
-		force:          flags.Bool("force", false, "allow replacing an existing output file"),
-		verbose:        flags.Bool("verbose", false, "verbose logging"),
-		threads:        flags.String("threads", "auto", "analysis workers or auto"),
-		codec:          flags.String("video-codec", string(cfg.VideoCodec), "hevc or h264"),
-		hevcTag:        flags.String("hevc-tag", string(cfg.HEVCCodecTag), "HEVC codec tag: hev1 or hvc1"),
-		device:         flags.String("vaapi-device", "", "VAAPI render device"),
-		rnnoise:        flags.Bool("rnnoise", false, "enable RNNoise"),
-		strength:       flags.Int("rnnoise-strength", cfg.Noise.Strength, "RNNoise strength 0-100"),
-		mono:           flags.Bool("mono", false, "convert output audio to mono"),
-		stereo:         flags.Bool("stereo", false, "preserve stereo output"),
-		threshold:      flags.Float64("threshold", cfg.Silence.ThresholdDB, "silence threshold dBFS"),
-		minSilence:     flags.Int("min-silence", cfg.Silence.MinSilenceMS, "minimum silence milliseconds"),
-		margin:         flags.Int("margin", cfg.Silence.MarginMS, "speech protection margin milliseconds"),
-		nonInteractive: flags.Bool("non-interactive", false, "use defaults without wizard"),
-	}
-	flags.BoolVar(rf.verbose, "v", false, "verbose logging")
-	return flags, rf
-}
-
-type analyzeFlagValues struct {
+type analysisFlagValues struct {
 	threads    *string
 	verbose    *bool
 	rnnoise    *bool
@@ -112,19 +72,71 @@ type analyzeFlagValues struct {
 	margin     *int
 }
 
-func newAnalyzeFlagSet(cfg config.Config, out io.Writer) (*flag.FlagSet, *analyzeFlagValues) {
-	flags := flag.NewFlagSet("lecturejet analyze", flag.ContinueOnError)
-	flags.SetOutput(out)
-	af := &analyzeFlagValues{
+func registerAnalysisFlags(flags *flag.FlagSet, cfg config.Config) *analysisFlagValues {
+	af := &analysisFlagValues{
 		threads:    flags.String("threads", "auto", "analysis workers or auto"),
-		verbose:    flags.Bool("verbose", false, "enable verbose logging"),
+		verbose:    flags.Bool("verbose", false, "verbose logging"),
 		rnnoise:    flags.Bool("rnnoise", false, "enable RNNoise"),
 		strength:   flags.Int("rnnoise-strength", cfg.Noise.Strength, "RNNoise strength 0-100"),
 		threshold:  flags.Float64("threshold", cfg.Silence.ThresholdDB, "silence threshold dBFS"),
 		minSilence: flags.Int("min-silence", cfg.Silence.MinSilenceMS, "minimum silence milliseconds"),
 		margin:     flags.Int("margin", cfg.Silence.MarginMS, "speech protection margin milliseconds"),
 	}
-	flags.BoolVar(af.verbose, "v", false, "enable verbose logging")
+	flags.BoolVar(af.verbose, "v", false, "verbose logging")
+	return af
+}
+
+func applyAnalysisFlags(cfg *config.Config, af *analysisFlagValues) error {
+	cfg.Verbose = *af.verbose
+	cfg.Noise.Enabled = *af.rnnoise
+	cfg.Noise.Strength = *af.strength
+	cfg.Silence.ThresholdDB = *af.threshold
+	cfg.Silence.MinSilenceMS = *af.minSilence
+	cfg.Silence.MarginMS = *af.margin
+	if *af.threads == "auto" {
+		cfg.Threads = 0
+	} else {
+		value, err := strconv.Atoi(*af.threads)
+		if err != nil || value < 1 {
+			return fmt.Errorf("invalid --threads %q", *af.threads)
+		}
+		cfg.Threads = value
+	}
+	return nil
+}
+
+type renderFlagValues struct {
+	analysisFlagValues
+	force          *bool
+	codec          *string
+	hevcTag        *string
+	device         *string
+	mono           *bool
+	stereo         *bool
+	nonInteractive *bool
+}
+
+func newRenderFlagSet(cfg config.Config, out io.Writer) (*flag.FlagSet, *renderFlagValues) {
+	flags := flag.NewFlagSet("lecturejet", flag.ContinueOnError)
+	flags.SetOutput(out)
+	af := registerAnalysisFlags(flags, cfg)
+	rf := &renderFlagValues{
+		analysisFlagValues: *af,
+		force:              flags.Bool("force", false, "allow replacing an existing output file"),
+		codec:              flags.String("video-codec", string(cfg.VideoCodec), "hevc or h264"),
+		hevcTag:            flags.String("hevc-tag", string(cfg.HEVCCodecTag), "HEVC codec tag: hev1 or hvc1"),
+		device:             flags.String("vaapi-device", "", "VAAPI render device"),
+		mono:               flags.Bool("mono", false, "convert output audio to mono"),
+		stereo:             flags.Bool("stereo", false, "preserve stereo output"),
+		nonInteractive:     flags.Bool("non-interactive", false, "use defaults without wizard"),
+	}
+	return flags, rf
+}
+
+func newAnalyzeFlagSet(cfg config.Config, out io.Writer) (*flag.FlagSet, *analysisFlagValues) {
+	flags := flag.NewFlagSet("lecturejet analyze", flag.ContinueOnError)
+	flags.SetOutput(out)
+	af := registerAnalysisFlags(flags, cfg)
 	return flags, af
 }
 
@@ -211,29 +223,17 @@ func parseRenderArgsWithInput(in io.Reader, args []string) (config.Config, bool,
 			cfg.Output = defaultOutput(cfg.Input)
 		}
 	}
-	cfg.Verbose = *rf.verbose
+	if err := applyAnalysisFlags(&cfg, &rf.analysisFlagValues); err != nil {
+		return config.Config{}, false, false, err
+	}
 	cfg.VideoCodec = config.VideoCodec(strings.ToLower(*rf.codec))
 	cfg.HEVCCodecTag = config.HEVCCodecTag(strings.ToLower(*rf.hevcTag))
 	cfg.VAAPIDevice = *rf.device
-	cfg.Noise.Enabled = *rf.rnnoise
-	cfg.Noise.Strength = *rf.strength
 	if *rf.mono {
 		cfg.Audio.Mono = true
 	}
 	if *rf.stereo {
 		cfg.Audio.Mono = false
-	}
-	cfg.Silence.ThresholdDB = *rf.threshold
-	cfg.Silence.MinSilenceMS = *rf.minSilence
-	cfg.Silence.MarginMS = *rf.margin
-	if *rf.threads == "auto" {
-		cfg.Threads = 0
-	} else {
-		value, err := strconv.Atoi(*rf.threads)
-		if err != nil || value < 1 {
-			return config.Config{}, false, false, fmt.Errorf("invalid --threads %q", *rf.threads)
-		}
-		cfg.Threads = value
 	}
 	interactive := !*rf.nonInteractive && isTerminal(in)
 	codecExplicit := false
@@ -262,19 +262,8 @@ func parseAnalyzeArgs(args []string) (config.Config, error) {
 	if flags.NArg() != 0 {
 		return config.Config{}, fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
 	}
-	cfg.Verbose = *af.verbose
-	cfg.Noise.Enabled, cfg.Noise.Strength = *af.rnnoise, *af.strength
-	cfg.Silence.ThresholdDB = *af.threshold
-	cfg.Silence.MinSilenceMS = *af.minSilence
-	cfg.Silence.MarginMS = *af.margin
-	if *af.threads == "auto" {
-		cfg.Threads = 0
-	} else {
-		value, err := strconv.Atoi(*af.threads)
-		if err != nil || value < 1 {
-			return config.Config{}, fmt.Errorf("invalid --threads %q", *af.threads)
-		}
-		cfg.Threads = value
+	if err := applyAnalysisFlags(&cfg, af); err != nil {
+		return config.Config{}, err
 	}
 	return cfg, nil
 }
