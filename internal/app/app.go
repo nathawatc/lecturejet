@@ -33,9 +33,6 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 	if !info.Audio {
 		return Result{}, fmt.Errorf("input has no audio stream to analyze")
 	}
-	if cfg.Threads <= 0 {
-		cfg.Threads = analyze.WorkerCount(0)
-	}
 	phase, totalPhases := getWorkflow(ctx, 1, 2)
 	reporter := NewProgressReporter(status, phase, totalPhases, "Analyzing Audio...")
 	if reporter != nil {
@@ -63,78 +60,42 @@ func Analyze(ctx context.Context, cfg config.Config, status io.Writer) (Result, 
 	if err != nil {
 		return Result{}, err
 	}
+	defer decoder.Close()
 
-	const blockSamples = 96_000
-	blocks := make(chan analyze.PCMBlock, analyze.WorkerCount(cfg.Threads)*2)
-	decodeErr := make(chan error, 1)
-	decodeDone := make(chan struct{})
-	go func() {
-		defer close(decodeDone)
-		defer close(blocks)
-		defer close(decodeErr)
-
-		splitter := newPCMBlockSplitter(blockSamples)
-		readBuffer := make([]float32, 8192)
-
-		emit := func(block analyze.PCMBlock) error {
-			if err := analysisCtx.Err(); err != nil {
-				return err
-			}
-			select {
-			case blocks <- block:
-				return nil
-			case <-analysisCtx.Done():
-				return analysisCtx.Err()
-			}
-		}
-
-		for {
-			count, start, readErr := decoder.Read(readBuffer)
-			if readErr != nil {
-				if analysisCtx.Err() != nil {
-					decodeErr <- analysisCtx.Err()
-					return
-				}
-				decodeErr <- readErr
-				return
-			}
-			if count == 0 {
-				if err := splitter.Flush(emit); err != nil {
-					decodeErr <- err
-					return
-				}
-				decodeErr <- nil
-				return
-			}
-			if err := splitter.Push(readBuffer[:count], start, emit); err != nil {
-				decodeErr <- err
-				return
-			}
-			if reporter != nil && info.DurationNS > 0 {
-				processed := start + int64(count)
-				totalSamples := int64(timeline.SampleIndexAtOrAfter(info.DurationNS, cfg.AnalysisSampleRate()))
-				pct := float64(processed) * 100.0 / float64(totalSamples)
-				mediaDur := time.Duration(timeline.TimeForSamples(processed, cfg.AnalysisSampleRate()))
-				reporter.Update(pct, mediaDur)
-			}
-		}
-	}()
-	defer func() {
-		cancelAnalysis()
-		<-decodeDone
-		decoder.Close()
-	}()
 	detector, err := analyze.NewDetector(cfg.Silence, cfg.AnalysisSampleRate())
 	if err != nil {
 		return Result{}, err
 	}
-	audioSamples, err := analyze.AnalyzeBlocksTo(analysisCtx, blocks, cfg.AnalysisSampleRate(), cfg.Silence.WindowMS,
-		cfg.Threads, detector.Consume)
-	if err != nil {
-		return Result{}, err
-	}
-	if decodeErrValue, ok := <-decodeErr; ok && decodeErrValue != nil {
-		return Result{}, decodeErrValue
+
+	readBuffer := make([]float32, 8192)
+	var audioSamples int64
+	for {
+		if err := analysisCtx.Err(); err != nil {
+			return Result{}, err
+		}
+		count, start, err := decoder.Read(readBuffer)
+		if err != nil {
+			return Result{}, err
+		}
+		if count == 0 {
+			break
+		}
+		metrics := analyze.Windows(readBuffer[:count], cfg.AnalysisSampleRate(), cfg.Silence.WindowMS)
+		for i := range metrics {
+			metrics[i].StartSample += start
+		}
+		detector.Consume(metrics)
+
+		processed := start + int64(count)
+		if processed > audioSamples {
+			audioSamples = processed
+		}
+		if reporter != nil && info.DurationNS > 0 {
+			totalSamples := int64(timeline.SampleIndexAtOrAfter(info.DurationNS, cfg.AnalysisSampleRate()))
+			pct := float64(processed) * 100.0 / float64(totalSamples)
+			mediaDur := time.Duration(timeline.TimeForSamples(processed, cfg.AnalysisSampleRate()))
+			reporter.Update(pct, mediaDur)
+		}
 	}
 	if reporter != nil {
 		reporter.Finish()

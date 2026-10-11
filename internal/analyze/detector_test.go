@@ -343,3 +343,11 @@ func TestZeroAllocations(t *testing.T) {
 		t.Fatalf("RMS allocs=%v, want 0", allocsRMS)
 	}
 }
+
+func repeatedSamples(count int, value float32) []float32 {
+	samples := make([]float32, count)
+	for i := range samples {
+		samples[i] = value
+	}
+	return samples
+}
