@@ -12,37 +12,33 @@ import (
 
 func Configure(in io.Reader, out io.Writer, cfg config.Config, choices []VAAPIChoice) (config.Config, error) {
 	reader := bufio.NewReader(in)
-	if len(choices) > 0 {
-		fmt.Fprintln(out, "Video codec:")
-		for i, choice := range choices {
-			name := "H.264(AVC)"
-			if choice.Codec == config.VideoHEVC {
-				name = "H.265(HEVC)"
-			}
-			fmt.Fprintf(out, "  [%d] %s\n", i+1, name)
+	fmt.Fprintln(out, "Video codec:")
+	for i, choice := range choices {
+		name := "H.264(AVC)"
+		if choice.Codec == config.VideoHEVC {
+			name = "H.265(HEVC)"
 		}
-		value, err := readChoice(reader, out, "Choice", 1, len(choices))
+		fmt.Fprintf(out, "  [%d] %s\n", i+1, name)
+	}
+	value, err := readChoice(reader, out, "Choice", 1, len(choices))
+	if err != nil {
+		return config.Config{}, err
+	}
+	cfg.VideoCodec = choices[value-1].Codec
+	cfg.VAAPIDevice = choices[value-1].Device
+	if cfg.VideoCodec == config.VideoHEVC {
+		fmt.Fprintln(out, "Codec tag:")
+		fmt.Fprintln(out, "  [1] HVC1 (Apple-compatible)")
+		fmt.Fprintln(out, "  [2] HEV1")
+		tagChoice, err := readChoice(reader, out, "Choice", 1, 2)
 		if err != nil {
 			return config.Config{}, err
 		}
-		cfg.VideoCodec = choices[value-1].Codec
-		cfg.VAAPIDevice = choices[value-1].Device
-		if cfg.VideoCodec == config.VideoHEVC {
-			fmt.Fprintln(out, "Codec tag:")
-			fmt.Fprintln(out, "  [1] HVC1 (Apple-compatible)")
-			fmt.Fprintln(out, "  [2] HEV1")
-			tagChoice, err := readChoice(reader, out, "Choice", 1, 2)
-			if err != nil {
-				return config.Config{}, err
-			}
-			if tagChoice == 1 {
-				cfg.HEVCCodecTag = config.HEVCCodecTagHVC1
-			} else {
-				cfg.HEVCCodecTag = config.HEVCCodecTagHEV1
-			}
+		if tagChoice == 1 {
+			cfg.HEVCCodecTag = config.HEVCCodecTagHVC1
+		} else {
+			cfg.HEVCCodecTag = config.HEVCCodecTagHEV1
 		}
-	} else {
-		fmt.Fprintln(out, "No usable VAAPI encoder found for selected input.")
 	}
 
 	choice, err := readLine(reader, out, "Use RNNoise noise reduction? [Y/n] ")
