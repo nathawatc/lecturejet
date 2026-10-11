@@ -136,10 +136,10 @@ static int lj_audio_route_block(LJRenderEngine *engine, int frames, int64_t sour
 		size_t index;
 		if (!lj_timeline_lookup_sample(timeline, source_sample, &index))
 			return 0;
-		int64_t take = timeline->sample_end[index] - source_sample;
+		int64_t take = timeline->entries[index].sample_end - source_sample;
 		if (take > frames - offset)
 			take = frames - offset;
-		if (timeline->segments[index].action == LJ_SEGMENT_KEEP) {
+		if (timeline->entries[index].segment.action == LJ_SEGMENT_KEEP) {
 			float *tail = lj_samples_extend(&audio->fifo, (size_t)take);
 			if (!tail)
 				return AVERROR(ENOMEM);

@@ -187,7 +187,7 @@ static int lj_video_skip_silence(LJRenderEngine *engine, size_t index, int64_t s
 		video->eof_reached = 1;
 		return 1;
 	}
-	int64_t target_ns = timeline->segments[next_keep].start_ns;
+	int64_t target_ns = timeline->entries[next_keep].segment.start_ns;
 	int64_t gap_ns = target_ns - source_ns;
 	if (gap_ns < LJ_MIN_SEEK_SILENCE_NS)
 		return 0;
@@ -208,7 +208,7 @@ static int lj_video_skip_silence(LJRenderEngine *engine, size_t index, int64_t s
 	timeline->cursor = next_keep;
 	if (engine->audio.enabled) {
 		lj_audio_seek_reset(engine->audio.decoder);
-		engine->audio.pre_roll_sample = timeline->sample_start[next_keep];
+		engine->audio.pre_roll_sample = timeline->entries[next_keep].sample_start;
 	}
 	return 1;
 }
@@ -232,7 +232,7 @@ static int lj_video_handle_frame(LJRenderEngine *engine, AVFrame *frame, int dra
 	size_t index;
 	if (!lj_timeline_lookup_ns(timeline, source_ns, &index))
 		return 0;
-	if (timeline->segments[index].action == LJ_SEGMENT_KEEP)
+	if (timeline->entries[index].segment.action == LJ_SEGMENT_KEEP)
 		return lj_video_encode_mapped(engine, frame, index, source_ns);
 	if (draining)
 		return 0;

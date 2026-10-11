@@ -4,12 +4,16 @@
 
 #include "../common/common.h"
 
+typedef struct {
+	LJSegment segment;
+	int64_t output_start_ns;
+	int64_t sample_start;
+	int64_t sample_end;
+} LJTimelineEntry;
+
 typedef struct LJTimelineView {
-	LJSegment *segments;
+	LJTimelineEntry *entries;
 	size_t count;
-	int64_t *output_start;
-	int64_t *sample_start;
-	int64_t *sample_end;
 	int64_t source_end;
 	size_t cursor;
 } LJTimelineView;
