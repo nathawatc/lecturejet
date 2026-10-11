@@ -14,10 +14,9 @@ static const LJVideoConfig lj_video_defaults = {
 	.rc_mode = "CQP",
 	.qp = 28,
 	.gop_duration_sec = 4,
-	.refs = 2,
+	.refs = 1,
 	.max_b_frames = 0,
 	.async_depth = 4,
-	.compression_level = 1,
 	.disable_sei = 0,
 	.hw_pool_size = 16,
 };
@@ -112,9 +111,6 @@ static int lj_video_apply(AVCodecContext *context, const LJVideoConfig *config,
 		return ret;
 	}
 	ret = lj_set_opt_int(context, "async_depth", config->async_depth, error, error_size);
-	if (ret >= 0)
-		ret = lj_set_opt_int(context, "compression_level", config->compression_level,
-			error, error_size);
 	if (ret >= 0 && config->disable_sei)
 		ret = lj_set_opt_int(context, "sei", 0, error, error_size);
 	return ret;

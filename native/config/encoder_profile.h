@@ -23,7 +23,6 @@ typedef struct LJVideoConfig {
 	int refs;
 	int max_b_frames;
 	int async_depth;
-	int compression_level;
 	int disable_sei;
 	int hw_pool_size;
 } LJVideoConfig;
