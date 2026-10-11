@@ -163,6 +163,38 @@ func TestAudioExactlyAtThresholdEndsSilenceCandidate(t *testing.T) {
 	}
 }
 
+func TestSilenceDetectionUsesRMSNotPeak(t *testing.T) {
+	cfg := config.Default().Silence
+	cfg.MarginMS = 0
+	detector, err := NewDetector(cfg, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	thresholdLevel := float32(math.Pow(10, cfg.ThresholdDB/20))
+
+	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
+	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
+	// High peak above threshold, but RMS below threshold
+	spikeInQuiet := WindowMetric{StartSample: 400, Samples: 100, RMS: thresholdLevel / 2, Peak: thresholdLevel * 5}
+
+	detector.Consume([]WindowMetric{speech})
+	for i := range 3 {
+		quiet.StartSample = int64(100 + i*100)
+		detector.Consume([]WindowMetric{quiet})
+	}
+	detector.Consume([]WindowMetric{spikeInQuiet})
+	for i := range 3 {
+		quiet.StartSample = int64(500 + i*100)
+		detector.Consume([]WindowMetric{quiet})
+	}
+	speech.StartSample = 800
+	detector.Consume([]WindowMetric{speech})
+	cuts := detector.Finish(900)
+	if len(cuts) != 1 || cuts[0].Start != 100_000_000 || cuts[0].End != 800_000_000 {
+		t.Fatalf("sub-threshold RMS with high peak should not interrupt silence, got: %v", cuts)
+	}
+}
+
 func TestSilenceExactlyAtMinimumIsRemoved(t *testing.T) {
 	cfg := config.Default().Silence
 	cfg.MarginMS = 0

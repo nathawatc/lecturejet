@@ -60,11 +60,7 @@ func (d *Detector) Consume(metrics []WindowMetric) {
 		if end > d.lastSample {
 			d.lastSample = end
 		}
-		level := metric.RMS
-		if metric.Peak > level {
-			level = metric.Peak
-		}
-		silent := level < d.silenceLevel
+		silent := metric.RMS < d.silenceLevel
 		switch d.state {
 		case stateSpeech:
 			if silent {
