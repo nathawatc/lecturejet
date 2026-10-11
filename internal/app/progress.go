@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"codeberg.org/nathawat/lecturejet/internal/timeline"
+	"codeberg.org/nathawat/lecturejet/internal/ui"
 )
 
 type workflowKey struct{}
@@ -29,14 +29,6 @@ func getWorkflow(ctx context.Context, defaultCurrent, defaultTotal int) (int, in
 		return v.currentPhase, v.totalPhases
 	}
 	return defaultCurrent, defaultTotal
-}
-
-func isTerminalWriter(w io.Writer) bool {
-	if f, ok := w.(*os.File); ok && f != nil {
-		info, err := f.Stat()
-		return err == nil && info.Mode()&os.ModeCharDevice != 0
-	}
-	return false
 }
 
 type ProgressReporter struct {
@@ -70,7 +62,7 @@ func NewProgressReporter(w io.Writer, phase, totalPhases int, stageName string) 
 	if w == nil {
 		return nil
 	}
-	return newProgressReporterWithTTY(w, phase, totalPhases, stageName, isTerminalWriter(w))
+	return newProgressReporterWithTTY(w, phase, totalPhases, stageName, ui.IsTerminal(w))
 }
 
 func newProgressReporterWithTTY(w io.Writer, phase, totalPhases int, stageName string, isTTY bool) *ProgressReporter {

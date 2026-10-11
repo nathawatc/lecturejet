@@ -18,12 +18,12 @@ import (
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 		if errors.Is(err, context.Canceled) {
-			if isTerminal(os.Stderr) {
+			if ui.IsTerminal(os.Stderr) {
 				fmt.Fprint(os.Stderr, "\r\033[2K\033[?25h")
 			}
 			os.Exit(130)
 		}
-		if isTerminal(os.Stderr) {
+		if ui.IsTerminal(os.Stderr) {
 			fmt.Fprint(os.Stderr, "\033[?25h")
 		}
 		fmt.Fprintf(os.Stderr, "lecturejet: %v\n", err)
@@ -133,14 +133,6 @@ func runAnalyze(args []string, stdout, stderr io.Writer) error {
 	}
 	printResult(stdout, result)
 	return nil
-}
-
-func isTerminal(v any) bool {
-	if file, ok := v.(*os.File); ok && file != nil {
-		info, err := file.Stat()
-		return err == nil && info.Mode()&os.ModeCharDevice != 0
-	}
-	return false
 }
 
 func printResult(out io.Writer, result app.Result) {

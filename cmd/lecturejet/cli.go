@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"codeberg.org/nathawat/lecturejet/internal/config"
+	"codeberg.org/nathawat/lecturejet/internal/ui"
 )
 
 var versionOverride string
@@ -235,7 +236,7 @@ func parseRenderArgsWithInput(in io.Reader, args []string) (config.Config, bool,
 	if *rf.stereo {
 		cfg.Audio.Mono = false
 	}
-	interactive := !*rf.nonInteractive && isTerminal(in)
+	interactive := !*rf.nonInteractive && ui.IsTerminal(in)
 	codecExplicit := false
 	flags.Visit(func(f *flag.Flag) {
 		if f.Name == "video-codec" {
