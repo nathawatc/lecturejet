@@ -12,7 +12,6 @@ type WindowMetric struct {
 	StartSample int64
 	Samples     int
 	RMS         float32
-	Peak        float32
 }
 
 type Detector struct {
@@ -112,13 +111,12 @@ func AnalyzeWindow(samples []float32) WindowMetric {
 		return WindowMetric{}
 	}
 	sum := sumSquares(samples)
-	peak := peakAbs(samples)
-	if !IsFinite(float32(sum)) || !IsFinite(peak) {
+	if !IsFinite(float32(sum)) {
 		// Never turn corrupt PCM into an apparent silent window.
-		return WindowMetric{Samples: n, RMS: 1, Peak: 1}
+		return WindowMetric{Samples: n, RMS: 1}
 	}
 	rms := float32(math.Sqrt(sum / float64(n)))
-	return WindowMetric{Samples: n, RMS: rms, Peak: peak}
+	return WindowMetric{Samples: n, RMS: rms}
 }
 
 func IsFinite(value float32) bool {

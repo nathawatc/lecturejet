@@ -10,17 +10,18 @@ Back to [AGENTS.md](../AGENTS.md).
 - **48 kHz Boundary Alignment**: Resample decoded audio to 48 kHz mono for
   silence detection. Align analyzed timestamps to integer 48 kHz sample
   boundaries.
-- **Vectorized Analysis**: Accelerate RMS energy, peak scanning, and zero-crossing
-  rate with AVX2 and FMA3 kernels on `amd64` (`rms_amd64.s`, `peak_amd64.s`).
-  Maintain strict output parity with `rms_generic.go` portable fallbacks.
+- **Vectorized Analysis**: Accelerate RMS energy with AVX2 and FMA3 kernels
+  on `amd64` (`rms_amd64.s`). Maintain strict output parity with `rms_generic.go`
+  portable fallbacks.
 - **Embedded Audio Models**: Package neural weights in `internal/audio/assets/std.rnnn`.
   Expose to FFmpeg via `memfd_create` anonymous RAM descriptors (`/proc/self/fd/<fd>`)
   on Linux to avoid temporary files on disk.
 - **Sequential Recurrent Filters**: Maintain state sequentially for recurrent
   filters such as `arnndn`; process an entire audio stream through a continuous
   filtergraph without splitting across parallel instances.
-- **Bounded Streaming**: Chunk incoming PCM through `pcmBlockSplitter` in
-  fixed blocks (`96,000` samples); keep worker job and result queues bounded.
+- **Bounded Streaming**: Stream decoded PCM sequentially directly into
+  `detector.Consume`; process audio in bounded 8,192-sample chunks without worker
+  queues.
 
 ## Timeline Mapping
 

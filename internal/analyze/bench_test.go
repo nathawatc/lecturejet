@@ -20,24 +20,6 @@ func BenchmarkAnalyzeWindow(b *testing.B) {
 	}
 }
 
-func BenchmarkPeakAbs_480(b *testing.B) {
-	samples := repeatedSamples(480, 0.08)
-	b.SetBytes(int64(len(samples) * 4))
-	b.ResetTimer()
-	for b.Loop() {
-		_ = peakAbs(samples)
-	}
-}
-
-func BenchmarkPeakAbs_480_Generic(b *testing.B) {
-	samples := repeatedSamples(480, 0.08)
-	b.SetBytes(int64(len(samples) * 4))
-	b.ResetTimer()
-	for b.Loop() {
-		_ = peakAbsGeneric(samples)
-	}
-}
-
 func BenchmarkRMS_Window(b *testing.B) {
 	samples := repeatedSamples(480, 0.08)
 	b.SetBytes(int64(len(samples) * 4))

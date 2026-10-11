@@ -14,8 +14,8 @@ func TestDetectorPreservesShortSilenceAndCutsLongSilence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	speech := WindowMetric{Samples: 100, RMS: 0.2, Peak: 0.3}
-	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
+	speech := WindowMetric{Samples: 100, RMS: 0.2}
+	quiet := WindowMetric{Samples: 100, RMS: 0}
 	speech.StartSample = 0
 	detector.Consume([]WindowMetric{speech})
 	for i := range 4 {
@@ -50,9 +50,9 @@ func TestAudioAboveThresholdEndsSilenceCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
-	band := WindowMetric{Samples: 100, RMS: 0.015, Peak: 0.015}
-	speech := WindowMetric{Samples: 100, RMS: 0.2, Peak: 0.2}
+	quiet := WindowMetric{Samples: 100, RMS: 0}
+	band := WindowMetric{Samples: 100, RMS: 0.015}
+	speech := WindowMetric{Samples: 100, RMS: 0.2}
 	speech.StartSample = 0
 	detector.Consume([]WindowMetric{speech})
 	for i := range 3 {
@@ -75,8 +75,8 @@ func TestDetectorMarginShrinksCutToProtectSpeech(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
-	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
+	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2}
+	quiet := WindowMetric{Samples: 100, RMS: 0}
 	detector.Consume([]WindowMetric{speech})
 	for i := range 6 {
 		quiet.StartSample = int64(100 + i*100)
@@ -97,9 +97,9 @@ func TestLowVolumeSpeechNearThresholdEndsCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
-	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
-	nearThreshold := WindowMetric{StartSample: 600, Samples: 100, RMS: 0.015, Peak: 0.015}
+	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2}
+	quiet := WindowMetric{Samples: 100, RMS: 0}
+	nearThreshold := WindowMetric{StartSample: 600, Samples: 100, RMS: 0.015}
 	detector.Consume([]WindowMetric{speech})
 	for i := range 5 {
 		quiet.StartSample = int64(100 + i*100)
@@ -122,9 +122,9 @@ func TestAudioJustAboveThresholdEndsSilenceCandidate(t *testing.T) {
 	thresholdLevel := float32(math.Pow(10, cfg.ThresholdDB/20))
 	justAbove := thresholdLevel + 0.0001
 
-	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
-	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
-	aboveThreshold := WindowMetric{StartSample: 600, Samples: 100, RMS: justAbove, Peak: justAbove}
+	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2}
+	quiet := WindowMetric{Samples: 100, RMS: 0}
+	aboveThreshold := WindowMetric{StartSample: 600, Samples: 100, RMS: justAbove}
 
 	detector.Consume([]WindowMetric{speech})
 	for i := range 5 {
@@ -147,9 +147,9 @@ func TestAudioExactlyAtThresholdEndsSilenceCandidate(t *testing.T) {
 	}
 	thresholdLevel := float32(math.Pow(10, cfg.ThresholdDB/20))
 
-	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
-	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
-	exactThreshold := WindowMetric{StartSample: 600, Samples: 100, RMS: thresholdLevel, Peak: thresholdLevel}
+	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2}
+	quiet := WindowMetric{Samples: 100, RMS: 0}
+	exactThreshold := WindowMetric{StartSample: 600, Samples: 100, RMS: thresholdLevel}
 
 	detector.Consume([]WindowMetric{speech})
 	for i := range 5 {
@@ -163,38 +163,6 @@ func TestAudioExactlyAtThresholdEndsSilenceCandidate(t *testing.T) {
 	}
 }
 
-func TestSilenceDetectionUsesRMSNotPeak(t *testing.T) {
-	cfg := config.Default().Silence
-	cfg.MarginMS = 0
-	detector, err := NewDetector(cfg, 1000)
-	if err != nil {
-		t.Fatal(err)
-	}
-	thresholdLevel := float32(math.Pow(10, cfg.ThresholdDB/20))
-
-	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
-	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
-	// High peak above threshold, but RMS below threshold
-	spikeInQuiet := WindowMetric{StartSample: 400, Samples: 100, RMS: thresholdLevel / 2, Peak: thresholdLevel * 5}
-
-	detector.Consume([]WindowMetric{speech})
-	for i := range 3 {
-		quiet.StartSample = int64(100 + i*100)
-		detector.Consume([]WindowMetric{quiet})
-	}
-	detector.Consume([]WindowMetric{spikeInQuiet})
-	for i := range 3 {
-		quiet.StartSample = int64(500 + i*100)
-		detector.Consume([]WindowMetric{quiet})
-	}
-	speech.StartSample = 800
-	detector.Consume([]WindowMetric{speech})
-	cuts := detector.Finish(900)
-	if len(cuts) != 1 || cuts[0].Start != 100_000_000 || cuts[0].End != 800_000_000 {
-		t.Fatalf("sub-threshold RMS with high peak should not interrupt silence, got: %v", cuts)
-	}
-}
-
 func TestSilenceExactlyAtMinimumIsRemoved(t *testing.T) {
 	cfg := config.Default().Silence
 	cfg.MarginMS = 0
@@ -202,8 +170,8 @@ func TestSilenceExactlyAtMinimumIsRemoved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
-	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
+	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2}
+	quiet := WindowMetric{Samples: 100, RMS: 0}
 	detector.Consume([]WindowMetric{speech})
 	for i := range 5 {
 		quiet.StartSample = int64(100 + i*100)
@@ -223,9 +191,9 @@ func TestShortImpulseInsideSilenceDoesNotCreateAggressiveCut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2, Peak: 0.2}
-	quiet := WindowMetric{Samples: 100, RMS: 0, Peak: 0}
-	impulse := WindowMetric{StartSample: 400, Samples: 100, RMS: 0.3, Peak: 0.8}
+	speech := WindowMetric{StartSample: 0, Samples: 100, RMS: 0.2}
+	quiet := WindowMetric{Samples: 100, RMS: 0}
+	impulse := WindowMetric{StartSample: 400, Samples: 100, RMS: 0.3}
 	detector.Consume([]WindowMetric{speech})
 	for i := range 3 {
 		quiet.StartSample = int64(100 + i*100)
@@ -243,10 +211,10 @@ func TestShortImpulseInsideSilenceDoesNotCreateAggressiveCut(t *testing.T) {
 
 func TestWindowMetricsRejectNonFiniteForDetection(t *testing.T) {
 	metric := AnalyzeWindow([]float32{float32(math.NaN()), float32(math.Inf(1)), 0.5})
-	if !IsFinite(metric.RMS) || !IsFinite(metric.Peak) {
+	if !IsFinite(metric.RMS) {
 		t.Fatalf("non-finite metric: %+v", metric)
 	}
-	if metric.Peak != 1 || metric.RMS != 1 {
+	if metric.RMS != 1 {
 		t.Fatalf("corrupt PCM metric=%+v", metric)
 	}
 }
@@ -301,28 +269,6 @@ func TestRMSPrecision(t *testing.T) {
 		diff := math.Abs(float64(expectedRMS - gotRMS))
 		if diff > 1e-5 {
 			t.Fatalf("len %d: vectorized RMS diff=%v, want <= 1e-5", n, diff)
-		}
-	}
-}
-
-func TestPeakAbsPrecision(t *testing.T) {
-	if peakAbs(nil) != 0 || peakAbs([]float32{}) != 0 {
-		t.Fatal("empty slice should return 0 peak")
-	}
-
-	for _, n := range []int{1, 2, 7, 8, 9, 15, 16, 31, 32, 33, 63, 64, 480, 9600} {
-		samples := make([]float32, n)
-		for i := range samples {
-			val := float32(math.Sin(float64(i)*0.07)) * 0.95
-			if i%3 == 0 {
-				val = -val
-			}
-			samples[i] = val
-		}
-		expected := peakAbsGeneric(samples)
-		got := peakAbs(samples)
-		if got != expected {
-			t.Fatalf("len %d: peakAbs=%v, want %v", n, got, expected)
 		}
 	}
 }

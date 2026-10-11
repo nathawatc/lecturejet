@@ -9,8 +9,7 @@ Linux CLI tool for conservatively removing silence from recorded lectures.
 - `internal/config/`: Configuration defaults, validation, and shared option
   types.
 - `internal/ui/`: Interactive VAAPI GPU discovery and configuration wizard.
-- `internal/analyze/`: Audio silence detection, SIMD window metrics, and parallel
-  worker streaming.
+- `internal/analyze/`: Audio silence detection and SIMD window metrics.
 - `internal/audio/`: Embedded RNNoise neural model assets and memory-backed
   descriptor lifecycle.
 - `internal/timeline/`: Immutable timeline segments and source-to-output

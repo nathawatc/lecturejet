@@ -110,7 +110,7 @@ Bypass the interactive GPU and audio wizard by specifying `--non-interactive`:
 | `--threshold`        | `-38`   | Silence detection threshold in dBFS                             |
 | `--min-silence`      | `450`   | Minimum silence duration in milliseconds before cutting         |
 | `--margin`           | `150`   | Speech safety margin in milliseconds before and after cuts      |
-| `--threads`          | `auto`  | Parallel audio analysis worker count                            |
+| `--threads`          | `auto`  | Video decoder thread count or auto                              |
 | `--force`            | `false` | Overwrite destination file or allow in-place input replacement  |
 | `--non-interactive`  | `false` | Skip interactive wizard and use flags/defaults                  |
 | `-v`, `--verbose`    | `false` | Enable verbose demuxer, seeker, and filter logging              |
@@ -124,7 +124,7 @@ Bypass the interactive GPU and audio wizard by specifying `--non-interactive`:
 | `--margin`           | `150`   | Speech safety margin in milliseconds              |
 | `--rnnoise`          | `false` | Evaluate silence detection after applying RNNoise |
 | `--rnnoise-strength` | `100`   | RNNoise suppression strength (`0` to `100`)       |
-| `--threads`          | `auto`  | Worker threads for parallel audio analysis        |
+| `--threads`          | `auto`  | Decoder thread count or auto                      |
 | `-v`, `--verbose`    | `false` | Enable detailed logging                           |
 
 ## Verification & Testing
